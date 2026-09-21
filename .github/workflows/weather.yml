@@ -21,6 +21,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json
-          git diff --staged --quiet || git commit -m "chore(wx): state $(date -u +%FT%TZ)"
-          git pull --rebase origin main || true
-          git push
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(wx): state $(date -u +%FT%TZ)"
+            for i in 1 2 3; do
+              git pull --rebase origin main || true
+              if git push; then break; fi
+              echo "push retry $i..."
+              sleep 2
+            done
+          fi
