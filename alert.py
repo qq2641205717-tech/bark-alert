@@ -54,18 +54,21 @@ def http_get_json(url, timeout=12):
 def bark(title, l1, l2, l3, level="active", sound=None, group="wx", url=None):
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
+    # critical 级别连续推3条, APNs间隔几秒送达, 形成连续响铃(像闹钟)
+    times = 3 if level == "critical" else 1
     payload = {"title":title, "body":f"{l1}\n{l2}\n{l3}", "level":level, "group":group}
     if sound: payload["sound"] = sound
     if url:   payload["url"] = url
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        f"https://api.day.app/{BARK_KEY}", data=data,
-        headers={"Content-Type":"application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=12) as r:
-            print(f"[BARK] {title} -> {json.loads(r.read())}")
-    except Exception as e:
-        print(f"[BARK ERROR] {e}")
+    for n in range(times):
+        req = urllib.request.Request(
+            f"https://api.day.app/{BARK_KEY}", data=data,
+            headers={"Content-Type":"application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=12) as r:
+                print(f"[BARK] {title} ({n+1}/{times}) -> {json.loads(r.read())}")
+        except Exception as e:
+            print(f"[BARK ERROR] {e}")
 
 def hav(la1, lo1, la2, lo2):
     R=6371.0
