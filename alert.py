@@ -54,8 +54,12 @@ def http_get_json(url, timeout=12):
 def bark(title, l1, l2, l3, level="active", sound=None, group="wx", url=None):
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
-    # critical 级别连续推10条, APNs间隔几秒送达, 形成连续响铃(像闹钟)
-    times = 10 if level == "critical" else 1
+    # critical 级别: 深夜(22:00-07:00北京时间)连推10次叫醒, 白天只推1次
+    if level == "critical":
+        bj_hour = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).hour
+        times = 10 if (bj_hour >= 22 or bj_hour < 7) else 1
+    else:
+        times = 1
     payload = {"title":title, "body":f"{l1}\n{l2}\n{l3}", "level":level, "group":group}
     if sound: payload["sound"] = sound
     if url:   payload["url"] = url
