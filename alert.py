@@ -98,6 +98,18 @@ def fetch_wx(loc):
            "&timezone=Asia%2FShanghai&forecast_days=3")
     return http_get_json(url)
 
+def fetch_aqi(loc):
+    url = (f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={loc['lat']}&longitude={loc['lon']}"
+           "&current=us_aqi,pm2_5,pm10&timezone=Asia%2FShanghai")
+    return http_get_json(url)
+
+def aqi_level(aqi):
+    if aqi <= 50:  return "🌿", "空气很清新", "fresh"
+    if aqi <= 100: return "🙂", "空气一般", None
+    if aqi <= 150: return "😷", "轻度污染", None
+    if aqi <= 200: return "😷", "空气被污染", "polluted"
+    return "🚨", "空气严重污染", "severe"
+
 def check_weather(s):
     wx = s.setdefault("wx", {})
     for loc in LOCATIONS:
@@ -106,7 +118,7 @@ def check_weather(s):
             d = fetch_wx(loc); cur = d["current"]
             temp = cur["temperature_2m"]; code = int(cur.get("weather_code",0))
             wind = cur.get("wind_speed_10m","?")
-            st = wx.setdefault(name, {"last_temp":None, "last_rain_prob":0})
+            st = wx.setdefault(name, {"last_temp":None, "last_rain_prob":0, "last_aqi":None})
             lt = st.get("last_temp")
             if lt is not None and abs(temp-lt) >= 5:
                 diff = temp-lt; arrow = "升温" if diff>0 else "降温"
@@ -128,6 +140,25 @@ def check_weather(s):
             print(f"[WX] {name} {temp}° {wmo(code)} 近3h降水{nxt}%")
         except Exception as e:
             print(f"[WX {name} ERR] {e}")
+
+        # AQI 变化检测
+        try:
+            aq = fetch_aqi(loc); aqi = int(aq["current"]["us_aqi"])
+            pm25 = aq["current"].get("pm2_5", "?")
+            la = st.get("last_aqi")
+            emoji, desc, tag = aqi_level(aqi)
+            if la is not None:
+                _, _, old_tag = aqi_level(la)
+                if tag and tag != old_tag:
+                    bark(f"{name} {emoji}{desc}",
+                         f"AQI {aqi} (上次{la})",
+                         f"PM2.5 {pm25}μg/m³",
+                         desc,
+                         level="timeSensitive", group="wx")
+                    print(f"[AQI] {name} {la}->{aqi} {tag}")
+            st["last_aqi"] = aqi
+        except Exception as e:
+            print(f"[AQI {name} ERR] {e}")
 
 def morning_forecast():
     for loc in LOCATIONS:
