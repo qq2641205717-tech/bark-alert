@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """
-Bark 在线预警 — 天气 / 天气变化 / 天气预报 / 地震预警 / 地震速报 / 津波情报
-iPhone 通知规格: 标题 1 行 + 正文恰好 3 行 (横幅预览不折叠)
-数据源: Open-Meteo (免费无key) + Wolfx (免费无key)
+Bark 双地点在线预警
+地点: 通化东昌区 + 梧州长洲区
+推送规格: 标题 1 行 + 正文 3 行
+地震分级:
+  - 当地地震(距任一监控点<=100km) 或 强震感(M>=5 / 烈度>=5) -> critical 紧急
+  - 附近小震(距任一监控点<=300km, M>=3)                    -> timeSensitive
+天气:
+  - 每30分钟: 温度突变>=5°C / 降水概率突变 <30->60%
+  - 早上7点:  各地点当天天气
+  - 傍晚18点: 各地点今夜到明早
 """
 import os, sys, json, math, urllib.request, datetime
 
+# ---------- 双地点 ----------
+LOCATIONS = [
+    {"name": "通化", "lat": 41.72, "lon": 125.94},   # 东昌区
+    {"name": "梧州", "lat": 23.48, "lon": 111.28},   # 长洲区
+]
 BARK_KEY   = os.environ.get("BARK_KEY", "")
-LAT        = float(os.environ.get("LAT", "41.72"))
-LON        = float(os.environ.get("LON", "125.94"))
-LOCATION   = os.environ.get("LOCATION_NAME", "通化")
 STATE_FILE = os.environ.get(
     "STATE_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json"),
@@ -25,6 +34,7 @@ WMO = {
 }
 def wmo(c): return WMO.get(int(c), f"代码{c}")
 
+# ---------- 工具 ----------
 def load_state():
     try:
         with open(STATE_FILE, encoding="utf-8") as f: return json.load(f)
@@ -41,12 +51,10 @@ def http_get_json(url, timeout=12):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
-def bark(title, line1, line2, line3, level="active", sound=None, group="weather", url=None):
-    """严格 iPhone 3 行通知: title + 3 行 body"""
+def bark(title, l1, l2, l3, level="active", sound=None, group="wx", url=None):
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
-    body = f"{line1}\n{line2}\n{line3}"
-    payload = {"title":title, "body":body, "level":level, "group":group}
+    payload = {"title":title, "body":f"{l1}\n{l2}\n{l3}", "level":level, "group":group}
     if sound: payload["sound"] = sound
     if url:   payload["url"] = url
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -66,7 +74,105 @@ def hav(la1, lo1, la2, lo2):
     a=math.sin(dp/2)**2+math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
     return R*2*math.asin(math.sqrt(a))
 
-# ---------- 地震 / 津波 ----------
+def nearest_loc(elat, elon):
+    best = None
+    for loc in LOCATIONS:
+        d = hav(loc["lat"], loc["lon"], elat, elon)
+        if best is None or d < best[1]:
+            best = (loc["name"], d)
+    return best
+
+# ---------- 天气 ----------
+def fetch_wx(loc):
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={loc['lat']}&longitude={loc['lon']}"
+           "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m"
+           "&hourly=temperature_2m,precipitation_probability,weather_code"
+           "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+           "&timezone=Asia%2FShanghai&forecast_days=3")
+    return http_get_json(url)
+
+def check_weather(s):
+    wx = s.setdefault("wx", {})
+    for loc in LOCATIONS:
+        name = loc["name"]
+        try:
+            d = fetch_wx(loc); cur = d["current"]
+            temp = cur["temperature_2m"]; code = int(cur.get("weather_code",0))
+            wind = cur.get("wind_speed_10m","?")
+            st = wx.setdefault(name, {"last_temp":None, "last_rain_prob":0})
+            lt = st.get("last_temp")
+            if lt is not None and abs(temp-lt) >= 5:
+                diff = temp-lt; arrow = "升温" if diff>0 else "降温"
+                bark(f"{name} 🌡️{arrow}{abs(diff):.1f}°C",
+                     f"现在{temp}° {wmo(code)}",
+                     f"上次{lt}°",
+                     "注意增减衣物",
+                     level="timeSensitive", group="wx")
+            h = d["hourly"]; times=h["time"]; probs=h["precipitation_probability"]
+            now = cur["time"]; idx = next((i for i,t in enumerate(times) if t>=now), 0)
+            nxt = max((int(probs[j] or 0) for j in range(idx, min(idx+4, len(probs)))), default=0)
+            if nxt >= 60 and st.get("last_rain_prob",0) < 30:
+                bark(f"{name} 🌧️将降雨{nxt}%",
+                     f"未来3小时降水{nxt}%",
+                     f"当前{wmo(code)} {temp}°",
+                     "出门请带伞",
+                     level="timeSensitive", sound="rain", group="wx")
+            st["last_temp"] = temp; st["last_rain_prob"] = nxt
+            print(f"[WX] {name} {temp}° {wmo(code)} 近3h降水{nxt}%")
+        except Exception as e:
+            print(f"[WX {name} ERR] {e}")
+
+def morning_forecast():
+    for loc in LOCATIONS:
+        name = loc["name"]
+        try:
+            d = fetch_wx(loc); daily = d["daily"]; cur = d["current"]
+            today_code = daily["weather_code"][0]
+            tmax = daily["temperature_2m_max"][0]
+            tmin = daily["temperature_2m_min"][0]
+            pmax = daily["precipitation_probability_max"][0]
+            wind = cur.get("wind_speed_10m","?")
+            bark(f"{name} 今日天气",
+                 f"白天 {wmo(today_code)} {tmax}°",
+                 f"夜间 {tmin}°",
+                 f"降水{pmax}% 风{wind}km/h",
+                 group="wx")
+        except Exception as e:
+            print(f"[MORNING {name} ERR] {e}")
+
+def evening_forecast():
+    for loc in LOCATIONS:
+        name = loc["name"]
+        try:
+            d = fetch_wx(loc)
+            h = d["hourly"]; times=h["time"]; temps=h["temperature_2m"]
+            probs=h["precipitation_probability"]; codes=h["weather_code"]
+            now = d["current"]["time"]; idx = next((i for i,t in enumerate(times) if t>=now), 0)
+            seg = temps[idx:idx+15]
+            night_low = min(seg) if seg else d["current"]["temperature_2m"]
+            morning_idx = next((i for i in range(idx, len(times))
+                                if times[i][11:13] in ("06","07") and i < idx+15), idx+12)
+            morn_temp = temps[morning_idx] if morning_idx < len(temps) else temps[-1]
+            night_code = codes[idx+6] if idx+6 < len(codes) else codes[idx]
+            max_rain = max((int(probs[j] or 0) for j in range(idx, min(idx+15,len(probs)))), default=0)
+            bark(f"{name} 今夜到明早",
+                 f"夜间 {wmo(night_code)} 最低{night_low:.0f}°",
+                 f"明早 {morn_temp:.0f}°",
+                 f"降水{max_rain}%",
+                 group="wx")
+        except Exception as e:
+            print(f"[EVENING {name} ERR] {e}")
+
+# ---------- 地震 ----------
+def _eq_level(mag, intensity, dist):
+    if dist <= 100:
+        return "critical", "alarm", "当地地震"
+    if mag >= 5.0 or intensity >= 5.0:
+        return "critical", "alarm", "强震感"
+    if dist <= 300 and mag >= 3.0:
+        return "timeSensitive", "update", "附近地震"
+    return None
+
 def check_earthquake(s):
     try:
         e = http_get_json("https://api.wolfx.jp/cenc_eew.json")
@@ -74,18 +180,19 @@ def check_earthquake(s):
         if eid and eid != last:
             s["last_eew_id"] = eid
             if last:
-                mag=float(e.get("Magnitude") or 0); hypo=e.get("HypoCenter","?")
+                mag=float(e.get("Magnitude") or 0)
                 elat=float(e.get("Latitude") or 0); elon=float(e.get("Longitude") or 0)
-                dist=hav(LAT,LON,elat,elon) if elat and elon else 9999
-                if (dist<=300 and mag>=4.0) or mag>=6.0:
-                    bark(f"🚨地震预警 M{mag}",
-                         f"{hypo} 距你{dist:.0f}km",
-                         f"深{e.get('Depth','?')}km 烈度{e.get('MaxIntensity','?')}",
-                         f"{e.get('OriginTime','')[11:16]}发震·详情",
-                         level="critical", sound="alarm", group="eq",
+                name, dist = nearest_loc(elat, elon)
+                intensity = float(e.get("MaxIntensity") or 0)
+                lvl = _eq_level(mag, intensity, dist)
+                if lvl:
+                    level, sound, tag = lvl
+                    bark(f"🚨{tag} M{mag}",
+                         f"距{name} {dist:.0f}km",
+                         f"深{e.get('Depth','?')}km 烈度{intensity}",
+                         f"{e.get('HypoCenter','?')} {e.get('OriginTime','')[11:16]}",
+                         level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
-                else:
-                    print(f"[EQ] EEW M{mag} {hypo} {dist:.0f}km 低于阈值")
     except Exception as e: print(f"[EQ EEW ERR] {e}")
 
     try:
@@ -96,15 +203,17 @@ def check_earthquake(s):
             s["last_eq_id"] = eid
             if last:
                 mag=float(latest.get("magnitude") or 0)
-                loc=latest.get("location","?")
                 elat=float(latest.get("latitude") or 0); elon=float(latest.get("longitude") or 0)
-                dist=hav(LAT,LON,elat,elon) if elat and elon else 9999
-                if (dist<=200 and mag>=3.0) or mag>=5.0:
-                    bark(f"📢地震速报 M{mag}",
-                         f"{loc} 距你{dist:.0f}km",
+                name, dist = nearest_loc(elat, elon)
+                intensity = float(latest.get("intensity") or 0)
+                lvl = _eq_level(mag, intensity, dist)
+                if lvl:
+                    level, sound, tag = lvl
+                    bark(f"📢{tag} M{mag}",
+                         f"距{name} {dist:.0f}km",
                          f"深{latest.get('depth','?')}km",
-                         f"{latest.get('time','')[11:16]}发震·详情",
-                         level="timeSensitive", sound="update", group="eq",
+                         f"{latest.get('location','?')} {latest.get('time','')[11:16]}",
+                         level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
     except Exception as e: print(f"[EQ LIST ERR] {e}")
 
@@ -126,85 +235,13 @@ def check_earthquake(s):
             s["last_tsunami_info"] = info
     except Exception as e: print(f"[TSUNAMI ERR] {e}")
 
-# ---------- 天气 ----------
-def fetch_weather():
-    url = (f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}"
-           "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m"
-           "&hourly=temperature_2m,precipitation_probability,weather_code"
-           "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
-           "&timezone=Asia%2FShanghai&forecast_days=3")
-    return http_get_json(url)
-
-def check_weather(s):
-    try:
-        d = fetch_weather(); cur=d["current"]
-        temp=cur.get("temperature_2m"); code=int(cur.get("weather_code",0))
-        hum=cur.get("relative_humidity_2m","?"); wind=cur.get("wind_speed_10m","?")
-        lt=s.get("last_temp")
-        if lt is not None and abs(temp-lt)>=5:
-            d2=temp-lt; arrow="升温" if d2>0 else "降温"
-            bark(f"🌡️{arrow}{abs(d2):.1f}°C",
-                 f"{LOCATION} 现在{temp}°",
-                 f"上次{lt}° {wmo(code)}",
-                 "注意增减衣物",
-                 level="timeSensitive", group="weather")
-        h=d["hourly"]; times=h["time"]; probs=h["precipitation_probability"]
-        now=cur["time"]; idx=next((i for i,t in enumerate(times) if t>=now),0)
-        nxt=max((int(probs[j] or 0) for j in range(idx,min(idx+4,len(probs)))),default=0)
-        if nxt>=60 and s.get("last_rain_prob",0)<30:
-            bark(f"🌧️将降雨{nxt}%",
-                 f"未来3小时降水{nxt}%",
-                 f"当前{wmo(code)} {temp}°",
-                 "出门请带伞",
-                 level="timeSensitive", sound="rain", group="weather")
-        s["last_temp"]=temp; s["last_rain_prob"]=nxt
-        s["last_check"]=datetime.datetime.now().isoformat()
-        print(f"[WX] {LOCATION} {temp}° {wmo(code)} 近3h降水{nxt}%")
-    except Exception as e: print(f"[WX ERR] {e}")
-
-def daily_forecast():
-    """每天 7 点: 3 天预报, 每行一天"""
-    try:
-        d=fetch_weather(); daily=d["daily"]
-        dates=daily["time"]; tmax=daily["temperature_2m_max"]
-        tmin=daily["temperature_2m_min"]; codes=daily["weather_code"]
-        pmax=daily["precipitation_probability_max"]
-        labels=["今天","明天","后天"]
-        lines=[f"{labels[i]} {wmo(codes[i])} {tmin[i]}°~{tmax[i]}°" for i in range(min(3,len(dates)))]
-        while len(lines)<3: lines.append("")
-        rain = f"降水{max(pmax[:3])}%" if pmax else ""
-        bark(f"{LOCATION} 今日天气",
-             lines[0], lines[1], f"{lines[2]} {rain}".strip(),
-             group="weather")
-    except Exception as e: print(f"[DAILY ERR] {e}")
-
-def hourly_forecast():
-    """24 小时展望: 现在 / 夜间最低 / 明天最高 / 降水风"""
-    try:
-        d=fetch_weather(); cur=d["current"]
-        temp=cur["temperature_2m"]; code=int(cur.get("weather_code",0))
-        wind=cur.get("wind_speed_10m","?")
-        h=d["hourly"]; times=h["time"]; temps=h["temperature_2m"]
-        probs=h["precipitation_probability"]; hcodes=h["weather_code"]
-        now=cur["time"]; idx=next((i for i,t in enumerate(times) if t>=now),0)
-        seg=temps[idx:idx+25]
-        night_low = min(seg[:14]) if len(seg)>=14 else min(seg)
-        day_high  = max(seg[12:24]) if len(seg)>=24 else max(seg[12:])
-        max_rain  = max((int(probs[j] or 0) for j in range(idx,min(idx+24,len(probs)))),default=0)
-        tmrw_code = hcodes[idx+14] if idx+14<len(hcodes) else code
-        bark(f"{LOCATION} {temp}°{wmo(code)}",
-             f"今夜 {temp:.0f}°→{night_low:.0f}° {wmo(code)}",
-             f"明天午后 {day_high:.0f}° {wmo(tmrw_code)}",
-             f"降水{max_rain}% 风{wind}km/h",
-             group="weather")
-    except Exception as e: print(f"[HOURLY ERR] {e}")
-
+# ---------- 入口 ----------
 if __name__=="__main__":
     mode=sys.argv[1] if len(sys.argv)>1 else "all"
     s=load_state()
     if mode in ("earthquake","all"): check_earthquake(s)
     if mode in ("weather","all"):   check_weather(s)
-    if mode=="daily":   daily_forecast()
-    if mode=="hourly":  hourly_forecast()
+    if mode=="morning":  morning_forecast()
+    if mode=="evening":   evening_forecast()
     save_state(s)
     print(f"[OK] {mode} @ {datetime.datetime.now()}")
