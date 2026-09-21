@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
 Bark 在线预警 — 天气 / 天气变化 / 天气预报 / 地震预警 / 地震速报 / 津波情报
+iPhone 通知规格: 标题 1 行 + 正文恰好 3 行 (横幅预览不折叠)
 数据源: Open-Meteo (免费无key) + Wolfx (免费无key)
-推送:   Bark HTTP API
-状态:   state.json (由 GitHub Actions 自动 commit 回仓库持久化)
 """
-import os, sys, json, time, math, urllib.request, urllib.parse, datetime
+import os, sys, json, math, urllib.request, datetime
 
-# ---------- 配置 ----------
 BARK_KEY   = os.environ.get("BARK_KEY", "")
 LAT        = float(os.environ.get("LAT", "41.72"))
 LON        = float(os.environ.get("LON", "125.94"))
@@ -17,255 +15,196 @@ STATE_FILE = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json"),
 )
 
-# WMO weather code -> 中文
 WMO = {
-    0: "晴", 1: "大部晴", 2: "多云", 3: "阴",
-    45: "雾", 48: "冻雾",
-    51: "小毛毛雨", 53: "毛毛雨", 55: "大毛毛雨", 56: "冻毛毛雨", 57: "强冻毛毛雨",
-    61: "小雨", 63: "中雨", 65: "大雨", 66: "冻雨", 67: "强冻雨",
-    71: "小雪", 73: "中雪", 75: "大雪", 77: "雪粒",
-    80: "小阵雨", 81: "阵雨", 82: "强阵雨", 85: "小阵雪", 86: "大阵雪",
-    95: "雷雨", 96: "雷雨伴冰雹", 99: "强雷雨伴冰雹",
+    0:"晴",1:"大部晴",2:"多云",3:"阴",45:"雾",48:"冻雾",
+    51:"毛毛雨",53:"毛毛雨",55:"毛毛雨",56:"冻雨",57:"冻雨",
+    61:"小雨",63:"中雨",65:"大雨",66:"冻雨",67:"冻雨",
+    71:"小雪",73:"中雪",75:"大雪",77:"雪粒",
+    80:"阵雨",81:"阵雨",82:"强阵雨",85:"阵雪",86:"阵雪",
+    95:"雷雨",96:"雷雨冰雹",99:"强雷雨冰雹",
 }
+def wmo(c): return WMO.get(int(c), f"代码{c}")
 
-def wmo_desc(code):
-    return WMO.get(int(code), f"天气代码{code}")
-
-# ---------- 工具 ----------
 def load_state():
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+        with open(STATE_FILE, encoding="utf-8") as f: return json.load(f)
+    except Exception: return {}
 
-def save_state(state):
+def save_state(s):
     tmp = STATE_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+        json.dump(s, f, ensure_ascii=False, indent=2)
     os.replace(tmp, STATE_FILE)
 
 def http_get_json(url, timeout=12):
-    req = urllib.request.Request(url, headers={"User-Agent": "bark-alert/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent":"bark-alert/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
-def bark(title, body, level="active", sound=None, group="default", url=None):
+def bark(title, line1, line2, line3, level="active", sound=None, group="weather", url=None):
+    """严格 iPhone 3 行通知: title + 3 行 body"""
     if not BARK_KEY:
-        print("[WARN] BARK_KEY 未设置, 跳过推送")
-        return
-    payload = {"title": title, "body": body, "level": level, "group": group}
-    if sound:
-        payload["sound"] = sound
-    if url:
-        payload["url"] = url
+        print("[WARN] BARK_KEY 未设置"); return
+    body = f"{line1}\n{line2}\n{line3}"
+    payload = {"title":title, "body":body, "level":level, "group":group}
+    if sound: payload["sound"] = sound
+    if url:   payload["url"] = url
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
-        f"https://api.day.app/{BARK_KEY}",
-        data=data,
-        headers={"Content-Type": "application/json", "User-Agent": "bark-alert/1.0"},
-        method="POST",
-    )
+        f"https://api.day.app/{BARK_KEY}", data=data,
+        headers={"Content-Type":"application/json"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=12) as r:
-            resp = json.loads(r.read().decode("utf-8"))
-            print(f"[BARK] {title} -> {resp}")
+            print(f"[BARK] {title} -> {json.loads(r.read())}")
     except Exception as e:
         print(f"[BARK ERROR] {e}")
 
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp = math.radians(lat2 - lat1)
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return R * 2 * math.asin(math.sqrt(a))
+def hav(la1, lo1, la2, lo2):
+    R=6371.0
+    p1,p2=math.radians(la1),math.radians(la2)
+    dp=math.radians(la2-la1); dl=math.radians(lo2-lo1)
+    a=math.sin(dp/2)**2+math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return R*2*math.asin(math.sqrt(a))
 
 # ---------- 地震 / 津波 ----------
-def check_earthquake(state):
-    # 1) CENC 地震预警 (EEW, 秒级)
+def check_earthquake(s):
     try:
-        eew = http_get_json("https://api.wolfx.jp/cenc_eew.json")
-        eid = eew.get("EventID", "")
-        last = state.get("last_eew_id", "")
+        e = http_get_json("https://api.wolfx.jp/cenc_eew.json")
+        eid = e.get("EventID",""); last = s.get("last_eew_id","")
         if eid and eid != last:
-            state["last_eew_id"] = eid
-            if last:  # 首次只建基线不推
-                mag = float(eew.get("Magnitude") or 0)
-                depth = eew.get("Depth", "?")
-                hypo = eew.get("HypoCenter", "未知")
-                elat = float(eew.get("Latitude") or 0)
-                elon = float(eew.get("Longitude") or 0)
-                dist = haversine(LAT, LON, elat, elon) if elat and elon else 9999
-                maxi = eew.get("MaxIntensity", "?")
-                # 阈值: 距本地 300km 内 M4.0+, 或全国 M6.0+
-                if (dist <= 300 and mag >= 4.0) or mag >= 6.0:
-                    bark(
-                        f"🚨 地震预警 M{mag}",
-                        f"震中：{hypo}\n深度：{depth}km\n距{LOCATION}约 {dist:.0f} km\n"
-                        f"最大烈度：{maxi}\n发震：{eew.get('OriginTime','')}",
-                        level="critical", sound="alarm", group="earthquake",
-                        url="https://news.ceic.ac.cn/",
-                    )
+            s["last_eew_id"] = eid
+            if last:
+                mag=float(e.get("Magnitude") or 0); hypo=e.get("HypoCenter","?")
+                elat=float(e.get("Latitude") or 0); elon=float(e.get("Longitude") or 0)
+                dist=hav(LAT,LON,elat,elon) if elat and elon else 9999
+                if (dist<=300 and mag>=4.0) or mag>=6.0:
+                    bark(f"🚨地震预警 M{mag}",
+                         f"{hypo} 距你{dist:.0f}km",
+                         f"深{e.get('Depth','?')}km 烈度{e.get('MaxIntensity','?')}",
+                         f"{e.get('OriginTime','')[11:16]}发震·详情",
+                         level="critical", sound="alarm", group="eq",
+                         url="https://news.ceic.ac.cn/")
                 else:
-                    print(f"[EQ] EEW M{mag} @{hypo} {dist:.0f}km, 低于阈值不推")
-    except Exception as e:
-        print(f"[EQ EEW ERROR] {e}")
+                    print(f"[EQ] EEW M{mag} {hypo} {dist:.0f}km 低于阈值")
+    except Exception as e: print(f"[EQ EEW ERR] {e}")
 
-    # 2) CENC 正式速报
     try:
         eq = http_get_json("https://api.wolfx.jp/cenc_eqlist.json")
-        latest = eq.get("No1", {})
-        eid = latest.get("EventID", "")
-        last = state.get("last_eq_id", "")
+        latest = eq.get("No1",{}); eid = latest.get("EventID","")
+        last = s.get("last_eq_id","")
         if eid and eid != last:
-            state["last_eq_id"] = eid
+            s["last_eq_id"] = eid
             if last:
-                mag = float(latest.get("magnitude") or 0)
-                loc = latest.get("location", "未知")
-                depth = latest.get("depth", "?")
-                elat = float(latest.get("latitude") or 0)
-                elon = float(latest.get("longitude") or 0)
-                dist = haversine(LAT, LON, elat, elon) if elat and elon else 9999
-                # 阈值: 距本地 200km 内 M3.0+, 或全国 M5.0+
-                if (dist <= 200 and mag >= 3.0) or mag >= 5.0:
-                    bark(
-                        f"📢 地震速报 M{mag}",
-                        f"震中：{loc}\n深度：{depth}km\n距{LOCATION}约 {dist:.0f} km\n"
-                        f"时间：{latest.get('time','')}",
-                        level="timeSensitive", sound="update", group="earthquake",
-                        url="https://news.ceic.ac.cn/",
-                    )
-                else:
-                    print(f"[EQ] 速报 M{mag} @{loc} {dist:.0f}km, 低于阈值")
-    except Exception as e:
-        print(f"[EQ LIST ERROR] {e}")
+                mag=float(latest.get("magnitude") or 0)
+                loc=latest.get("location","?")
+                elat=float(latest.get("latitude") or 0); elon=float(latest.get("longitude") or 0)
+                dist=hav(LAT,LON,elat,elon) if elat and elon else 9999
+                if (dist<=200 and mag>=3.0) or mag>=5.0:
+                    bark(f"📢地震速报 M{mag}",
+                         f"{loc} 距你{dist:.0f}km",
+                         f"深{latest.get('depth','?')}km",
+                         f"{latest.get('time','')[11:16]}发震·详情",
+                         level="timeSensitive", sound="update", group="eq",
+                         url="https://news.ceic.ac.cn/")
+    except Exception as e: print(f"[EQ LIST ERR] {e}")
 
-    # 3) 日本气象厅 津波情报 (海啸预警)
     try:
-        jma = http_get_json("https://api.wolfx.jp/jma_eqlist.json")
-        latest = jma.get("No1", {})
-        info = (latest.get("info") or "").strip()
-        last = state.get("last_tsunami_info", "")
-        # 只有真正发布海啸警报/注意报才推; "津波の心配はありません"=无海啸担忧, 不推
-        is_warning = bool(
-            info and (
-                "大津波警報" in info or "津波警報" in info
-                or "津波注意報" in info or "津波予報" in info
-            )
-        )
-        if is_warning and info != last:
-            state["last_tsunami_info"] = info
-            bark(
-                "🌊 海啸/津波情报",
-                f"日本气象厅发布：{info}\n震中：{latest.get('location','')}\n"
-                f"M{latest.get('magnitude','')} 最大震度{latest.get('shindo','')}",
-                level="critical", sound="alarm", group="tsunami",
-                url="https://www.jma.go.jp/jma/index.html",
-            )
+        j = http_get_json("https://api.wolfx.jp/jma_eqlist.json")
+        latest = j.get("No1",{}); info=(latest.get("info") or "").strip()
+        last = s.get("last_tsunami_info","")
+        is_warn = bool(info and ("大津波警報" in info or "津波警報" in info
+                                or "津波注意報" in info or "津波予報" in info))
+        if is_warn and info != last:
+            s["last_tsunami_info"] = info
+            bark("🌊海啸预警",
+                 "日本气象厅发布",
+                 f"{latest.get('location','?')}",
+                 f"M{latest.get('magnitude','?')} 震度{latest.get('shindo','?')}",
+                 level="critical", sound="alarm", group="tsunami",
+                 url="https://www.jma.go.jp/jma/index.html")
         elif info:
-            state["last_tsunami_info"] = info
-    except Exception as e:
-        print(f"[TSUNAMI ERROR] {e}")
+            s["last_tsunami_info"] = info
+    except Exception as e: print(f"[TSUNAMI ERR] {e}")
 
 # ---------- 天气 ----------
 def fetch_weather():
-    url = (
-        f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}"
-        "&current=temperature_2m,relative_humidity_2m,apparent_temperature,"
-        "precipitation,weather_code,wind_speed_10m"
-        "&hourly=temperature_2m,precipitation_probability,weather_code"
-        "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
-        "precipitation_sum,precipitation_probability_max"
-        "&timezone=Asia%2FShanghai&forecast_days=3"
-    )
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}"
+           "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m"
+           "&hourly=temperature_2m,precipitation_probability,weather_code"
+           "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+           "&timezone=Asia%2FShanghai&forecast_days=3")
     return http_get_json(url)
 
-def check_weather(state):
+def check_weather(s):
     try:
-        data = fetch_weather()
-        cur = data.get("current", {})
-        temp = cur.get("temperature_2m")
-        code = int(cur.get("weather_code", 0))
-        hum = cur.get("relative_humidity_2m", "?")
-        wind = cur.get("wind_speed_10m", "?")
-
-        # 温度突变 (>=5°C)
-        last_temp = state.get("last_temp")
-        if last_temp is not None and temp is not None:
-            diff = temp - last_temp
-            if abs(diff) >= 5:
-                direction = "升温" if diff > 0 else "降温"
-                bark(
-                    f"🌡️ {direction} {abs(diff):.1f}°C",
-                    f"{LOCATION} 当前 {temp}°C（上次 {last_temp}°C）\n"
-                    f"{wmo_desc(code)}，湿度 {hum}%，风速 {wind} km/h",
-                    level="timeSensitive", group="weather",
-                )
-
-        # 降水概率突变: 未来 3h 降水概率 >60% 且上次 <30%
-        hourly = data.get("hourly", {})
-        times = hourly.get("time", [])
-        probs = hourly.get("precipitation_probability", [])
-        # 找当前时间索引
-        now_str = cur.get("time", "")
-        idx = 0
-        for i, t in enumerate(times):
-            if t >= now_str:
-                idx = i
-                break
-        near_prob = 0
-        for j in range(idx, min(idx + 4, len(probs))):
-            near_prob = max(near_prob, int(probs[j] or 0))
-        last_rain = state.get("last_rain_prob", 0)
-        if near_prob >= 60 and last_rain < 30:
-            bark(
-                f"🌧️ 即将降雨 概率{near_prob}%",
-                f"{LOCATION} 未来几小时降水概率 {near_prob}%\n"
-                f"当前 {wmo_desc(code)} {temp}°C\n出门请带伞",
-                level="timeSensitive", sound="rain", group="weather",
-            )
-
-        state["last_temp"] = temp
-        state["last_rain_prob"] = near_prob
-        state["last_weather_code"] = code
-        state["last_check"] = datetime.datetime.now().isoformat()
-        print(f"[WEATHER] {LOCATION} {temp}°C {wmo_desc(code)} 近3h降水{near_prob}%")
-    except Exception as e:
-        print(f"[WEATHER ERROR] {e}")
+        d = fetch_weather(); cur=d["current"]
+        temp=cur.get("temperature_2m"); code=int(cur.get("weather_code",0))
+        hum=cur.get("relative_humidity_2m","?"); wind=cur.get("wind_speed_10m","?")
+        lt=s.get("last_temp")
+        if lt is not None and abs(temp-lt)>=5:
+            d2=temp-lt; arrow="升温" if d2>0 else "降温"
+            bark(f"🌡️{arrow}{abs(d2):.1f}°C",
+                 f"{LOCATION} 现在{temp}°",
+                 f"上次{lt}° {wmo(code)}",
+                 "注意增减衣物",
+                 level="timeSensitive", group="weather")
+        h=d["hourly"]; times=h["time"]; probs=h["precipitation_probability"]
+        now=cur["time"]; idx=next((i for i,t in enumerate(times) if t>=now),0)
+        nxt=max((int(probs[j] or 0) for j in range(idx,min(idx+4,len(probs)))),default=0)
+        if nxt>=60 and s.get("last_rain_prob",0)<30:
+            bark(f"🌧️将降雨{nxt}%",
+                 f"未来3小时降水{nxt}%",
+                 f"当前{wmo(code)} {temp}°",
+                 "出门请带伞",
+                 level="timeSensitive", sound="rain", group="weather")
+        s["last_temp"]=temp; s["last_rain_prob"]=nxt
+        s["last_check"]=datetime.datetime.now().isoformat()
+        print(f"[WX] {LOCATION} {temp}° {wmo(code)} 近3h降水{nxt}%")
+    except Exception as e: print(f"[WX ERR] {e}")
 
 def daily_forecast():
+    """每天 7 点: 3 天预报, 每行一天"""
     try:
-        data = fetch_weather()
-        daily = data.get("daily", {})
-        dates = daily.get("time", [])
-        tmax = daily.get("temperature_2m_max", [])
-        tmin = daily.get("temperature_2m_min", [])
-        codes = daily.get("weather_code", [])
-        pmax = daily.get("precipitation_probability_max", [])
-        cur = data.get("current", {})
-        lines = []
-        for i in range(min(3, len(dates))):
-            label = "今天" if i == 0 else ("明天" if i == 1 else "后天")
-            lines.append(
-                f"{label}（{dates[i][5:]}）：{wmo_desc(codes[i])}  "
-                f"{tmin[i]}°~{tmax[i]}°  降水{pmax[i]}%"
-            )
-        body = "\n".join(lines)
-        body += f"\n\n当前 {cur.get('temperature_2m','?')}°C {wmo_desc(cur.get('weather_code',0))}"
-        bark(f"📅 {LOCATION}未来3天预报", body, group="weather")
-    except Exception as e:
-        print(f"[DAILY ERROR] {e}")
+        d=fetch_weather(); daily=d["daily"]
+        dates=daily["time"]; tmax=daily["temperature_2m_max"]
+        tmin=daily["temperature_2m_min"]; codes=daily["weather_code"]
+        pmax=daily["precipitation_probability_max"]
+        labels=["今天","明天","后天"]
+        lines=[f"{labels[i]} {wmo(codes[i])} {tmin[i]}°~{tmax[i]}°" for i in range(min(3,len(dates)))]
+        while len(lines)<3: lines.append("")
+        rain = f"降水{max(pmax[:3])}%" if pmax else ""
+        bark(f"{LOCATION} 今日天气",
+             lines[0], lines[1], f"{lines[2]} {rain}".strip(),
+             group="weather")
+    except Exception as e: print(f"[DAILY ERR] {e}")
 
-# ---------- 入口 ----------
-if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else "all"
-    state = load_state()
-    if mode in ("earthquake", "all"):
-        check_earthquake(state)
-    if mode in ("weather", "all"):
-        check_weather(state)
-    if mode == "daily":
-        daily_forecast()
-    save_state(state)
-    print(f"[OK] mode={mode} done at {datetime.datetime.now()}")
+def hourly_forecast():
+    """24 小时展望: 现在 / 夜间最低 / 明天最高 / 降水风"""
+    try:
+        d=fetch_weather(); cur=d["current"]
+        temp=cur["temperature_2m"]; code=int(cur.get("weather_code",0))
+        wind=cur.get("wind_speed_10m","?")
+        h=d["hourly"]; times=h["time"]; temps=h["temperature_2m"]
+        probs=h["precipitation_probability"]; hcodes=h["weather_code"]
+        now=cur["time"]; idx=next((i for i,t in enumerate(times) if t>=now),0)
+        seg=temps[idx:idx+25]
+        night_low = min(seg[:14]) if len(seg)>=14 else min(seg)
+        day_high  = max(seg[12:24]) if len(seg)>=24 else max(seg[12:])
+        max_rain  = max((int(probs[j] or 0) for j in range(idx,min(idx+24,len(probs)))),default=0)
+        tmrw_code = hcodes[idx+14] if idx+14<len(hcodes) else code
+        bark(f"{LOCATION} {temp}°{wmo(code)}",
+             f"今夜 {temp:.0f}°→{night_low:.0f}° {wmo(code)}",
+             f"明天午后 {day_high:.0f}° {wmo(tmrw_code)}",
+             f"降水{max_rain}% 风{wind}km/h",
+             group="weather")
+    except Exception as e: print(f"[HOURLY ERR] {e}")
+
+if __name__=="__main__":
+    mode=sys.argv[1] if len(sys.argv)>1 else "all"
+    s=load_state()
+    if mode in ("earthquake","all"): check_earthquake(s)
+    if mode in ("weather","all"):   check_weather(s)
+    if mode=="daily":   daily_forecast()
+    if mode=="hourly":  hourly_forecast()
+    save_state(s)
+    print(f"[OK] {mode} @ {datetime.datetime.now()}")

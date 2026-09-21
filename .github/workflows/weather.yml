@@ -2,7 +2,9 @@ name: 天气监控与预报
 on:
   schedule:
     - cron: '*/30 * * * *'
-    - cron: '0 23 * * *'
+    - cron: '0 23 * * *'   # UTC 23:00 = 北京 07:00 推3天日报
+    - cron: '0 0 * * *'    # UTC 00:00 = 北京 08:00 推24h展望
+    - cron: '0 12 * * *'   # UTC 12:00 = 北京 20:00 推24h展望
   workflow_dispatch:
 
 jobs:
@@ -15,13 +17,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: 判断模式 (UTC 23:00 = 北京 07:00 推日报)
+      - name: 判断模式
         id: m
         run: |
           H=$(date -u +%H)
           M=$(date -u +%M)
           if [ "$H" = "23" ] && [ "$M" = "00" ]; then
             echo "mode=daily" >> $GITHUB_OUTPUT
+          elif { [ "$H" = "0" ] || [ "$H" = "12" ]; } && [ "$M" = "00" ]; then
+            echo "mode=hourly" >> $GITHUB_OUTPUT
           else
             echo "mode=weather" >> $GITHUB_OUTPUT
           fi
