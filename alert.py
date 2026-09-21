@@ -51,7 +51,7 @@ def http_get_json(url, timeout=12):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
-def bark(title, l1, l2, l3, level="active", sound=None, group="wx", url=None):
+def bark(title, l1, l2, l3, level="timeSensitive", sound=None, group="wx", url=None):
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
     # critical 级别: 深夜(22:00-07:00北京时间)连推10次叫醒, 白天只推1次
@@ -143,7 +143,7 @@ def morning_forecast():
                  f"白天 {wmo(today_code)} {tmax}°",
                  f"夜间 {tmin}°",
                  f"降水{pmax}% 风{wind}km/h",
-                 group="wx")
+                 level="timeSensitive", group="wx")
         except Exception as e:
             print(f"[MORNING {name} ERR] {e}")
 
@@ -166,7 +166,7 @@ def evening_forecast():
                  f"夜间 {wmo(night_code)} 最低{night_low:.0f}°",
                  f"明早 {morn_temp:.0f}°",
                  f"降水{max_rain}%",
-                 group="wx")
+                 level="timeSensitive", group="wx")
         except Exception as e:
             print(f"[EVENING {name} ERR] {e}")
 
