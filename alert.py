@@ -218,8 +218,9 @@ def check_nmc_alerts(s):
 
             if need_push:
                 matched, wtype, color = key.split("|")
-                level = "critical" if color in ("红","橙") else ("timeSensitive" if color=="黄" else "active")
-                sound = "alarm" if color in ("红","橙") else None
+                # 分级: 红色才critical(10响), 橙色timeSensitive(1响), 黄/蓝静默横幅
+                level = "critical" if color == "红" else ("timeSensitive" if color == "橙" else "active")
+                sound = "alarm" if color == "红" else None
                 ns = len(info["stations"])
                 station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
                 tag = "持续中" if reason == "持续提醒" else "新预警"
