@@ -218,9 +218,9 @@ def check_nmc_alerts(s):
 
             if need_push:
                 matched, wtype, color = key.split("|")
-                # 分级: 红色才critical(10响), 橙色timeSensitive(1响), 黄/蓝静默横幅
-                level = "critical" if color == "红" else ("timeSensitive" if color == "橙" else "active")
-                sound = "alarm" if color == "红" else None
+                # 天气预警全部只通知, 不响铃
+                level = "timeSensitive"
+                sound = None
                 ns = len(info["stations"])
                 station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
                 tag = "持续中" if reason == "持续提醒" else "新预警"
@@ -242,21 +242,20 @@ def check_nmc_alerts(s):
 
 # ---------- 地震 ----------
 def _eq_level(mag, intensity, dist):
-    """收紧分级, 避免误报:
-    critical(10响): 当地有感(<=100km且M>=3) / 强震(M>=6) / 附近强震(<=300km且M>=5)
-    timeSensitive(1响): 附近小震(<=300km且M>=3) / 远处中强震(<=1000km且M>=5)
-    其他: 不推
+    """分级:
+    critical(10响): 只给致命地震 - M>=6.0 / 当地强震(<=100km且M>=5.0)
+    timeSensitive(1响): 其他地震 - 附近小震/远处中强震/当地有感小震
     """
-    if dist <= 100 and mag >= 3.0:
-        return "critical", "alarm", "当地有感地震"
     if mag >= 6.0:
-        return "critical", "alarm", "强震"
-    if dist <= 300 and mag >= 5.0:
-        return "critical", "alarm", "附近强震"
+        return "critical", "alarm", "强震M"
+    if dist <= 100 and mag >= 5.0:
+        return "critical", "alarm", "当地强震"
     if dist <= 300 and mag >= 3.0:
-        return "timeSensitive", "update", "附近小震"
+        return "timeSensitive", "update", "附近地震"
     if dist <= 1000 and mag >= 5.0:
         return "timeSensitive", "update", "中强震"
+    if dist <= 100 and mag >= 3.0:
+        return "timeSensitive", "update", "当地小震"
     return None
 
 def check_earthquake(s):
