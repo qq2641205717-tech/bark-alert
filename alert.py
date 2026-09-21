@@ -165,49 +165,47 @@ def evening_forecast():
 
 # ---------- 中央气象台官方预警 ----------
 def check_nmc_alerts(s):
-    """中央气象台 NMC 官方预警 (权威源, 多源混合)"""
+    """按 地点|类型|颜色 去重, 同key无变化只推一次; 首次只建基线不轰炸; 解除后自动清除再发会重推"""
     try:
-        url = "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=50&signaltype=&signallevel=&province="
+        url = "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=80&signaltype=&signallevel=&province="
         req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=12) as r:
             d = json.loads(r.read().decode("utf-8"))
         alerts = d.get("data",{}).get("page",{}).get("list",[])
-        seen = set(s.get("nmc_seen", []))
-        new_seen = set(seen)
+
+        current = {}
         for a in alerts:
-            aid = a.get("alertid","")
             title = a.get("title","")
-            if not aid or aid in seen:
+            matched = next((loc["name"] for loc in LOCATIONS if any(k in title for k in loc["kw"])), None)
+            if not matched: continue
+            color = next((c for c in ("红","橙","黄","蓝") if c+"色" in title), "蓝")
+            wtype = next((kw for kw in ("雷电","大雾","暴雨","寒潮","大风","高温","台风","暴雪",
+                          "霜冻","道路结冰","沙尘暴","雷雨大风","强对流","冰雹","干旱","霾","海上大风")
+                          if kw in title), "天气")
+            key = f"{matched}|{wtype}|{color}"
+            station = title.split("发布")[0]
+            current.setdefault(key, {"stations":[], "time":a.get("issuetime","")})["stations"].append(station)
+
+        pushed = s.get("nmc_pushed", {})
+        first_run = not pushed
+
+        for key, info in current.items():
+            if key in pushed or first_run:
                 continue
-            new_seen.add(aid)
-            # 匹配地点
-            matched = None
-            for loc in LOCATIONS:
-                if any(k in title for k in loc["kw"]):
-                    matched = loc["name"]; break
-            if not matched:
-                continue
-            # 解析颜色和类型
-            color = "蓝"
-            for c in ("红","橙","黄","蓝"):
-                if c+"色" in title:
-                    color = c; break
+            matched, wtype, color = key.split("|")
             level = "critical" if color in ("红","橙") else ("timeSensitive" if color=="黄" else "active")
             sound = "alarm" if color in ("红","橙") else None
-            # 提取预警类型: "发布XX色预警"
-            wtype = ""
-            for kw in ("雷电","大雾","暴雨","寒潮","大风","高温","台风","暴雪","霜冻","道路结冰","沙尘暴","雷雨大风","强对流","冰雹","干旱","霾","海上大风"):
-                if kw in title:
-                    wtype = kw; break
-            pubtime = a.get("issuetime","").replace("/","-")
+            ns = len(info["stations"])
+            station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
             bark(f"⚠️{matched} {color}色{wtype}预警",
-                 f"官方: {title.split('发布')[0][:18]}",
-                 f"{pubtime[5:16] if len(pubtime)>=16 else pubtime}",
+                 f"{station_txt}",
+                 f"发布 {info['time'][5:16].replace('/','-')}",
                  "中央气象台权威发布",
                  level=level, sound=sound, group="alert",
                  url="http://www.nmc.cn/publish/alarm.html")
-            print(f"[NMC] {matched} {color}色{wtype}预警 -> {title}")
-        s["nmc_seen"] = list(new_seen)[-200:]  # 只保留最近200个
+            print(f"[NMC] {key} 新预警 ({ns}台站)")
+
+        s["nmc_pushed"] = {k: True for k in current}
     except Exception as e:
         print(f"[NMC ERR] {e}")
 
