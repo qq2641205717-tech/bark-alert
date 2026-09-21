@@ -201,6 +201,9 @@ def check_nmc_alerts(s):
 
         for key, info in current.items():
             prev = pushed.get(key, {})
+            # 兼容旧格式 (值为True)
+            if not isinstance(prev, dict):
+                prev = {}
             need_push = False
             reason = ""
 
