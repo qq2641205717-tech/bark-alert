@@ -214,12 +214,21 @@ def check_nmc_alerts(s):
 
 # ---------- 地震 ----------
 def _eq_level(mag, intensity, dist):
-    if dist <= 100:
-        return "critical", "alarm", "当地地震"
-    if mag >= 5.0 or intensity >= 5.0:
-        return "critical", "alarm", "强震感"
+    """收紧分级, 避免误报:
+    critical(10响): 当地有感(<=100km且M>=3) / 强震(M>=6) / 附近强震(<=300km且M>=5)
+    timeSensitive(1响): 附近小震(<=300km且M>=3) / 远处中强震(<=1000km且M>=5)
+    其他: 不推
+    """
+    if dist <= 100 and mag >= 3.0:
+        return "critical", "alarm", "当地有感地震"
+    if mag >= 6.0:
+        return "critical", "alarm", "强震"
+    if dist <= 300 and mag >= 5.0:
+        return "critical", "alarm", "附近强震"
     if dist <= 300 and mag >= 3.0:
-        return "timeSensitive", "update", "附近地震"
+        return "timeSensitive", "update", "附近小震"
+    if dist <= 1000 and mag >= 5.0:
+        return "timeSensitive", "update", "中强震"
     return None
 
 def check_earthquake(s):
