@@ -168,7 +168,12 @@ def evening_forecast():
 
 # ---------- 中央气象台官方预警 ----------
 def check_nmc_alerts(s):
-    """按 地点|类型|颜色 去重, 同key无变化只推一次; 首次只建基线不轰炸; 解除后自动清除再发会重推"""
+    """去重逻辑:
+    - 首次运行只建基线不轰炸
+    - 同key的issuetime变了(气象台新发布/更新) -> 重推
+    - 持续预警每3小时再推一次提醒(防止用户遗忘)
+    - 预警解除后自动清除, 再发会重推
+    """
     try:
         url = "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=80&signaltype=&signallevel=&province="
         req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
@@ -191,24 +196,43 @@ def check_nmc_alerts(s):
 
         pushed = s.get("nmc_pushed", {})
         first_run = not pushed
+        now = datetime.datetime.now().timestamp()
+        REMIND_INTERVAL = 3 * 3600  # 持续预警3小时提醒一次
 
         for key, info in current.items():
-            if key in pushed or first_run:
-                continue
-            matched, wtype, color = key.split("|")
-            level = "critical" if color in ("红","橙") else ("timeSensitive" if color=="黄" else "active")
-            sound = "alarm" if color in ("红","橙") else None
-            ns = len(info["stations"])
-            station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
-            bark(f"⚠️{matched} {color}色{wtype}预警",
-                 f"{station_txt}",
-                 f"发布 {info['time'][5:16].replace('/','-')}",
-                 "中央气象台权威发布",
-                 level=level, sound=sound, group="alert",
-                 url="http://www.nmc.cn/publish/alarm.html")
-            print(f"[NMC] {key} 新预警 ({ns}台站)")
+            prev = pushed.get(key, {})
+            need_push = False
+            reason = ""
 
-        s["nmc_pushed"] = {k: True for k in current}
+            if first_run:
+                pass  # 首次不推
+            elif prev.get("issuetime") != info["time"]:
+                need_push = True
+                reason = "新发布/更新"
+            elif now - prev.get("last_push", 0) > REMIND_INTERVAL:
+                need_push = True
+                reason = "持续提醒"
+
+            if need_push:
+                matched, wtype, color = key.split("|")
+                level = "critical" if color in ("红","橙") else ("timeSensitive" if color=="黄" else "active")
+                sound = "alarm" if color in ("红","橙") else None
+                ns = len(info["stations"])
+                station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
+                tag = "持续中" if reason == "持续提醒" else "新预警"
+                bark(f"⚠️{matched} {color}色{wtype}预警",
+                     f"{station_txt}",
+                     f"发布 {info['time'][5:16].replace('/','-')}",
+                     f"{tag} · 中央气象台",
+                     level=level, sound=sound, group="alert",
+                     url="http://www.nmc.cn/publish/alarm.html")
+                print(f"[NMC] {key} {reason} ({ns}台站)")
+
+            pushed[key] = {"issuetime": info["time"],
+                           "last_push": now if need_push else prev.get("last_push", now)}
+
+        # 清除已解除的预警
+        s["nmc_pushed"] = {k: v for k, v in pushed.items() if k in current}
     except Exception as e:
         print(f"[NMC ERR] {e}")
 
