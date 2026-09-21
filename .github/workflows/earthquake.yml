@@ -1,7 +1,6 @@
 name: 地震与津波监控
 on:
   schedule:
-    - cron: '30 11 21 9 *'
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
