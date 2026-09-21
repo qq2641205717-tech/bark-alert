@@ -1,0 +1,31 @@
+name: 地震与津波监控
+on:
+  schedule:
+    - cron: '* * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 检查地震/津波
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+          LAT: '41.72'
+          LON: '125.94'
+          LOCATION_NAME: '通化'
+        run: python alert.py earthquake
+      - name: 回写状态
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --staged --quiet || git commit -m "chore(eq): state $(date -u +%FT%TZ)"
+          git pull --rebase origin main || true
+          git push

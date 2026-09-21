@@ -1,0 +1,42 @@
+name: 天气监控与预报
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 判断模式 (UTC 23:00 = 北京 07:00 推日报)
+        id: m
+        run: |
+          H=$(date -u +%H)
+          M=$(date -u +%M)
+          if [ "$H" = "23" ] && [ "$M" = "00" ]; then
+            echo "mode=daily" >> $GITHUB_OUTPUT
+          else
+            echo "mode=weather" >> $GITHUB_OUTPUT
+          fi
+      - name: 运行
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+          LAT: '41.72'
+          LON: '125.94'
+          LOCATION_NAME: '通化'
+        run: python alert.py ${{ steps.m.outputs.mode }}
+      - name: 回写状态
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --staged --quiet || git commit -m "chore(wx): state $(date -u +%FT%TZ)"
+          git pull --rebase origin main || true
+          git push
