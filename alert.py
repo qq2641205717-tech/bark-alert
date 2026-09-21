@@ -118,11 +118,11 @@ def check_weather(s):
     bj_hour = bj_now.hour
     last_morning = s.get("last_morning", "")
     last_evening = s.get("last_evening", "")
-    if 7 <= bj_hour < 9 and last_morning != bj_date:
+    if 7 <= bj_hour < 10 and last_morning != bj_date:
         print(f"[FORECAST] 发送早报 {bj_now.strftime('%H:%M')}")
         morning_forecast()
         s["last_morning"] = bj_date
-    if 18 <= bj_hour < 20 and last_evening != bj_date:
+    if 17 <= bj_hour < 22 and last_evening != bj_date:
         print(f"[FORECAST] 发送晚报 {bj_now.strftime('%H:%M')}")
         evening_forecast()
         s["last_evening"] = bj_date
