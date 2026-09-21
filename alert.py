@@ -15,8 +15,8 @@ import os, sys, json, math, urllib.request, datetime
 
 # ---------- 双地点 ----------
 LOCATIONS = [
-    {"name": "通化", "lat": 41.72, "lon": 125.94},   # 东昌区
-    {"name": "梧州", "lat": 23.48, "lon": 111.28},   # 长洲区
+    {"name": "通化", "lat": 41.72, "lon": 125.94, "kw": ["通化"]},
+    {"name": "梧州", "lat": 23.48, "lon": 111.28, "kw": ["梧州"]},
 ]
 BARK_KEY   = os.environ.get("BARK_KEY", "")
 STATE_FILE = os.environ.get(
@@ -163,6 +163,54 @@ def evening_forecast():
         except Exception as e:
             print(f"[EVENING {name} ERR] {e}")
 
+# ---------- 中央气象台官方预警 ----------
+def check_nmc_alerts(s):
+    """中央气象台 NMC 官方预警 (权威源, 多源混合)"""
+    try:
+        url = "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=50&signaltype=&signallevel=&province="
+        req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        alerts = d.get("data",{}).get("page",{}).get("list",[])
+        seen = set(s.get("nmc_seen", []))
+        new_seen = set(seen)
+        for a in alerts:
+            aid = a.get("alertid","")
+            title = a.get("title","")
+            if not aid or aid in seen:
+                continue
+            new_seen.add(aid)
+            # 匹配地点
+            matched = None
+            for loc in LOCATIONS:
+                if any(k in title for k in loc["kw"]):
+                    matched = loc["name"]; break
+            if not matched:
+                continue
+            # 解析颜色和类型
+            color = "蓝"
+            for c in ("红","橙","黄","蓝"):
+                if c+"色" in title:
+                    color = c; break
+            level = "critical" if color in ("红","橙") else ("timeSensitive" if color=="黄" else "active")
+            sound = "alarm" if color in ("红","橙") else None
+            # 提取预警类型: "发布XX色预警"
+            wtype = ""
+            for kw in ("雷电","大雾","暴雨","寒潮","大风","高温","台风","暴雪","霜冻","道路结冰","沙尘暴","雷雨大风","强对流","冰雹","干旱","霾","海上大风"):
+                if kw in title:
+                    wtype = kw; break
+            pubtime = a.get("issuetime","").replace("/","-")
+            bark(f"⚠️{matched} {color}色{wtype}预警",
+                 f"官方: {title.split('发布')[0][:18]}",
+                 f"{pubtime[5:16] if len(pubtime)>=16 else pubtime}",
+                 "中央气象台权威发布",
+                 level=level, sound=sound, group="alert",
+                 url="http://www.nmc.cn/publish/alarm.html")
+            print(f"[NMC] {matched} {color}色{wtype}预警 -> {title}")
+        s["nmc_seen"] = list(new_seen)[-200:]  # 只保留最近200个
+    except Exception as e:
+        print(f"[NMC ERR] {e}")
+
 # ---------- 地震 ----------
 def _eq_level(mag, intensity, dist):
     if dist <= 100:
@@ -240,7 +288,9 @@ if __name__=="__main__":
     mode=sys.argv[1] if len(sys.argv)>1 else "all"
     s=load_state()
     if mode in ("earthquake","all"): check_earthquake(s)
-    if mode in ("weather","all"):   check_weather(s)
+    if mode in ("weather","all"):
+        check_weather(s)
+        check_nmc_alerts(s)
     if mode=="morning":  morning_forecast()
     if mode=="evening":   evening_forecast()
     save_state(s)
