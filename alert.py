@@ -112,6 +112,20 @@ def aqi_level(aqi):
 
 def check_weather(s):
     wx = s.setdefault("wx", {})
+    # --- 早晚报: 按北京时间窗口判断, 每天只发一次 ---
+    bj_now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+    bj_date = bj_now.strftime("%Y-%m-%d")
+    bj_hour = bj_now.hour
+    last_morning = s.get("last_morning", "")
+    last_evening = s.get("last_evening", "")
+    if 7 <= bj_hour < 9 and last_morning != bj_date:
+        print(f"[FORECAST] 发送早报 {bj_now.strftime('%H:%M')}")
+        morning_forecast()
+        s["last_morning"] = bj_date
+    if 18 <= bj_hour < 20 and last_evening != bj_date:
+        print(f"[FORECAST] 发送晚报 {bj_now.strftime('%H:%M')}")
+        evening_forecast()
+        s["last_evening"] = bj_date
     for loc in LOCATIONS:
         name = loc["name"]
         try:
@@ -145,8 +159,10 @@ def check_weather(s):
         try:
             aq = fetch_aqi(loc); aqi = int(aq["current"]["us_aqi"])
             pm25 = aq["current"].get("pm2_5", "?")
-            la = st.get("last_aqi")
+            st2 = wx.get(name, st)
+            la = st2.get("last_aqi")
             emoji, desc, tag = aqi_level(aqi)
+            print(f"[AQI] {name} AQI={aqi} (上次{la})")
             if la is not None:
                 _, _, old_tag = aqi_level(la)
                 if tag and tag != old_tag:
@@ -156,7 +172,7 @@ def check_weather(s):
                          desc,
                          level="timeSensitive", group="wx")
                     print(f"[AQI] {name} {la}->{aqi} {tag}")
-            st["last_aqi"] = aqi
+            st2["last_aqi"] = aqi
         except Exception as e:
             print(f"[AQI {name} ERR] {e}")
 
@@ -215,6 +231,7 @@ def check_nmc_alerts(s):
         with urllib.request.urlopen(req, timeout=12) as r:
             d = json.loads(r.read().decode("utf-8"))
         alerts = d.get("data",{}).get("page",{}).get("list",[])
+        print(f"[NMC] 全国预警{len(alerts)}条, 匹配通化/梧州")
 
         current = {}
         for a in alerts:
