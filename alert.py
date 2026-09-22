@@ -298,7 +298,13 @@ def check_nmc_alerts(s):
             if first_run:
                 # 首次运行: 如果预警是最近12小时内发的, 也推一次(不漏报新预警)
                 try:
-                    itime = datetime.datetime.strptime(info["time"][:19], "%Y-%m-%d %H:%M:%S")
+                    t = info["time"].replace("/", "-")
+                    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+                        try:
+                            itime = datetime.datetime.strptime(t[:19], fmt)
+                            break
+                        except:
+                            continue
                     age_hours = (datetime.datetime.now() - itime).total_seconds() / 3600
                     if age_hours < 12:
                         need_push = True
