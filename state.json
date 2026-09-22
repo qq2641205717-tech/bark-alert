@@ -11,14 +11,15 @@
     "通化": {
       "last_temp": 23.6,
       "last_rain_prob": 0,
-      "last_aqi": 45
+      "last_aqi": 45,
+      "last_wx_code": 0
     },
     "梧州": {
       "last_temp": 31.1,
       "last_rain_prob": 67,
-      "last_aqi": 63
+      "last_aqi": 63,
+      "last_wx_code": 96
     }
   },
-  "last_evening": "2026-09-21",
-  "last_morning": "2026-09-22"
+  "last_evening": "2026-09-21"
 }

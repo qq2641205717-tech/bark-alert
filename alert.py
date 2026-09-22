@@ -151,6 +151,42 @@ def check_weather(s):
                      "出门请带伞",
                      level="timeSensitive", sound="rain", group="wx")
             st["last_temp"] = temp; st["last_rain_prob"] = nxt
+
+            # --- 雨/雪变化检测 ---
+            def precip_level(c):
+                if c in (0,1,2,3,45,48): return 0
+                if c in (51,53,55,56,57,61,71,77,80,85): return 1
+                if c in (63,73,81): return 2
+                if c in (65,66,67,75,82,86,95,96,99): return 3
+                return 0
+            def precip_type(c):
+                if c in (51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99): return "雨"
+                if c in (71,73,75,77,85,86): return "雪"
+                return ""
+            old_code = st.get("last_wx_code")
+            new_lvl = precip_level(code)
+            old_lvl = precip_level(old_code) if old_code is not None else None
+            if old_lvl is not None:
+                pt = precip_type(code) or precip_type(old_code)
+                if old_lvl == 0 and new_lvl > 0:
+                    bark(f"{name} 🌧️开始{pt}",
+                         f"现在{wmo(code)} {temp}°",
+                         f"降水概率{nxt}%",
+                         f"出门记得带{pt=='雪' and '防滑' or '伞'}",
+                         level="timeSensitive", sound="rain", group="wx")
+                elif old_lvl > 0 and new_lvl == 0:
+                    bark(f"{name} 🌤️{pt}停了",
+                         f"现在{wmo(code)} {temp}°",
+                         f"降水概率{nxt}%",
+                         f"{pt}渐止放晴",
+                         level="timeSensitive", group="wx")
+                elif new_lvl > old_lvl and old_lvl > 0:
+                    bark(f"{name} ⛈️{pt}越下越大",
+                         f"现在{wmo(code)} {temp}°",
+                         f"降水概率{nxt}%",
+                         f"注意防范",
+                         level="timeSensitive", sound="rain", group="wx")
+            st["last_wx_code"] = code
             print(f"[WX] {name} {temp}° {wmo(code)} 近3h降水{nxt}%")
         except Exception as e:
             print(f"[WX {name} ERR] {e}")
@@ -260,7 +296,15 @@ def check_nmc_alerts(s):
             reason = ""
 
             if first_run:
-                pass  # 首次不推
+                # 首次运行: 如果预警是最近12小时内发的, 也推一次(不漏报新预警)
+                try:
+                    itime = datetime.datetime.strptime(info["time"][:19], "%Y-%m-%d %H:%M:%S")
+                    age_hours = (datetime.datetime.now() - itime).total_seconds() / 3600
+                    if age_hours < 12:
+                        need_push = True
+                        reason = "当前活跃预警"
+                except:
+                    pass
             elif prev.get("issuetime") != info["time"]:
                 need_push = True
                 reason = "新发布/更新"
