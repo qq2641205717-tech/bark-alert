@@ -8,24 +8,24 @@
   "last_check": "2026-09-21T07:43:42.905874",
   "nmc_pushed": {
     "梧州|雷电|黄": {
-      "issuetime": "2026/09/23 16:14",
-      "last_push": 1790151627.30518
+      "issuetime": "2026/09/23 16:50",
+      "last_push": 1790154044.25909
     }
   },
   "wx": {
     "通化": {
-      "last_temp": 21.3,
+      "last_temp": 20.8,
       "last_rain_prob": 14,
-      "last_aqi": 83,
+      "last_aqi": 87,
       "last_wx_code": 0
     },
     "梧州": {
-      "last_temp": 29.7,
+      "last_temp": 29.8,
       "last_rain_prob": 80,
-      "last_aqi": 110,
-      "last_wx_code": 2
+      "last_aqi": 126,
+      "last_wx_code": 3
     }
   },
-  "last_evening": "2026-09-22",
+  "last_evening": "2026-09-23",
   "last_morning": "2026-09-23"
 }
