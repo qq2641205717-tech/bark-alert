@@ -9,7 +9,7 @@
   "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 9.2,
+      "last_temp": 9.0,
       "last_rain_prob": 0,
       "last_aqi": 71,
       "last_wx_code": 0
@@ -24,7 +24,7 @@
       "last_temp": 13.3,
       "last_rain_prob": 0,
       "last_aqi": 37,
-      "last_wx_code": 2
+      "last_wx_code": 1
     }
   },
   "last_evening": "2026-09-24"
