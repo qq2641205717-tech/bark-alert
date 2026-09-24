@@ -17,6 +17,7 @@ import os, sys, json, math, urllib.request, datetime
 LOCATIONS = [
     {"name": "通化", "lat": 41.72, "lon": 125.94, "kw": ["通化"]},
     {"name": "梧州", "lat": 23.48, "lon": 111.28, "kw": ["梧州"]},
+    {"name": "海参崴", "lat": 43.13, "lon": 131.92, "kw": ["海参崴", "符拉迪沃斯托克", "Vladivostok"]},
 ]
 BARK_KEY   = os.environ.get("BARK_KEY", "")
 STATE_FILE = os.environ.get(

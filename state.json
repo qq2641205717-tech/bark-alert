@@ -1,6 +1,6 @@
 {
-  "last_eew_id": "202609230009.0001",
-  "last_eq_id": "CC.20260923175037.4",
+  "last_eew_id": "202609192353.0001",
+  "last_eq_id": "CD.20260921110319.887",
   "last_tsunami_info": "この地震による津波の心配はありません。",
   "last_temp": 21.9,
   "last_rain_prob": 0,
@@ -19,8 +19,13 @@
       "last_rain_prob": 59,
       "last_aqi": 85,
       "last_wx_code": 1
+    },
+    "海参崴": {
+      "last_temp": 17.0,
+      "last_rain_prob": 0,
+      "last_aqi": 47,
+      "last_wx_code": 1
     }
   },
-  "last_evening": "2026-09-23",
-  "last_morning": "2026-09-24"
+  "last_evening": "2026-09-22"
 }
