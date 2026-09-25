@@ -10,6 +10,10 @@
     "通化|雷电|黄": {
       "issuetime": "2026/09/26 03:02",
       "last_push": 1790363427.846333
+    },
+    "通化|暴雨|蓝": {
+      "issuetime": "2026/09/26 03:09",
+      "last_push": 1790363779.958872
     }
   },
   "wx": {
@@ -17,19 +21,19 @@
       "last_temp": 14.8,
       "last_rain_prob": 98,
       "last_aqi": 60,
-      "last_wx_code": 3
+      "last_wx_code": 65
     },
     "梧州": {
-      "last_temp": 25.5,
+      "last_temp": 24.8,
       "last_rain_prob": 0,
       "last_aqi": 72,
       "last_wx_code": 0
     },
     "海参崴": {
-      "last_temp": 14.6,
-      "last_rain_prob": 65,
+      "last_temp": 14.1,
+      "last_rain_prob": 68,
       "last_aqi": 41,
-      "last_wx_code": 51
+      "last_wx_code": 3
     }
   },
   "last_evening": "2026-09-25",
