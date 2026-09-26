@@ -9,7 +9,7 @@
   "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 17.8,
+      "last_temp": 17.6,
       "last_rain_prob": 100,
       "last_aqi": 52,
       "last_wx_code": 3
@@ -21,10 +21,10 @@
       "last_wx_code": 0
     },
     "海参崴": {
-      "last_temp": 16.7,
+      "last_temp": 16.6,
       "last_rain_prob": 100,
       "last_aqi": 40,
-      "last_wx_code": 95
+      "last_wx_code": 81
     }
   },
   "last_evening": "2026-09-25",
