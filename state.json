@@ -12,10 +12,10 @@
       "last_temp": 17.2,
       "last_rain_prob": 100,
       "last_aqi": 53,
-      "last_wx_code": 51
+      "last_wx_code": 53
     },
     "梧州": {
-      "last_temp": 31.9,
+      "last_temp": 32.0,
       "last_rain_prob": 0,
       "last_aqi": 70,
       "last_wx_code": 0
