@@ -8,25 +8,25 @@
   "last_check": "2026-09-21T07:43:42.905874",
   "nmc_pushed": {
     "通化|雷电|黄": {
-      "issuetime": "2026/09/26 13:10",
-      "last_push": 1790400379.419393
+      "issuetime": "2026/09/26 13:19",
+      "last_push": 1790400668.323395
     }
   },
   "wx": {
     "通化": {
-      "last_temp": 17.2,
+      "last_temp": 17.1,
       "last_rain_prob": 100,
       "last_aqi": 53,
       "last_wx_code": 53
     },
     "梧州": {
-      "last_temp": 32.0,
+      "last_temp": 32.1,
       "last_rain_prob": 0,
       "last_aqi": 70,
       "last_wx_code": 0
     },
     "海参崴": {
-      "last_temp": 16.8,
+      "last_temp": 16.7,
       "last_rain_prob": 100,
       "last_aqi": 36,
       "last_wx_code": 95
