@@ -15,7 +15,7 @@
   "wx": {
     "通化": {
       "last_temp": 12.6,
-      "last_rain_prob": 3,
+      "last_rain_prob": 12,
       "last_aqi": 50,
       "last_wx_code": 2
     },
@@ -27,7 +27,7 @@
     },
     "海参崴": {
       "last_temp": 15.6,
-      "last_rain_prob": 8,
+      "last_rain_prob": 0,
       "last_aqi": 45,
       "last_wx_code": 2
     }
