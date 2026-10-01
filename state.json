@@ -15,16 +15,16 @@
       "last_wx_code": 0
     },
     "梧州": {
-      "last_temp": 33.9,
-      "last_rain_prob": 68,
+      "last_temp": 34.0,
+      "last_rain_prob": 69,
       "last_aqi": 80,
       "last_wx_code": 0
     },
     "海参崴": {
-      "last_temp": 14.5,
+      "last_temp": 14.4,
       "last_rain_prob": 0,
       "last_aqi": 37,
-      "last_wx_code": 0
+      "last_wx_code": 1
     }
   },
   "last_evening": "2026-09-30",
