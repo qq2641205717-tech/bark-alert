@@ -7,14 +7,6 @@
   "last_weather_code": 0,
   "last_check": "2026-09-21T07:43:42.905874",
   "nmc_pushed": {
-    "梧州|雷电|黄": {
-      "issuetime": "2026/10/02 12:33",
-      "last_push": 1790916024.007148
-    },
-    "梧州|暴雨|橙": {
-      "issuetime": "2026/10/02 12:30",
-      "last_push": 1790916024.007148
-    },
     "梧州|大风|黄": {
       "issuetime": "2026/10/02 13:51",
       "last_push": 1790920847.518955
@@ -28,13 +20,13 @@
       "last_wx_code": 0
     },
     "梧州": {
-      "last_temp": 31.3,
+      "last_temp": 31.5,
       "last_rain_prob": 80,
       "last_aqi": 54,
       "last_wx_code": 2
     },
     "海参崴": {
-      "last_temp": 13.5,
+      "last_temp": 13.6,
       "last_rain_prob": 0,
       "last_aqi": 32,
       "last_wx_code": 3
