@@ -9,19 +9,19 @@
   "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 1.5,
+      "last_temp": 1.7,
       "last_rain_prob": 0,
       "last_aqi": 44,
       "last_wx_code": 0
     },
     "梧州": {
-      "last_temp": 23.8,
+      "last_temp": 23.6,
       "last_rain_prob": 82,
       "last_aqi": 62,
       "last_wx_code": 95
     },
     "海参崴": {
-      "last_temp": 10.0,
+      "last_temp": 10.1,
       "last_rain_prob": 0,
       "last_aqi": 26,
       "last_wx_code": 0
