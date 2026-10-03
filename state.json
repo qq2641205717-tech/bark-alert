@@ -6,27 +6,22 @@
   "last_rain_prob": 0,
   "last_weather_code": 0,
   "last_check": "2026-09-21T07:43:42.905874",
-  "nmc_pushed": {
-    "通化|大雾|黄": {
-      "issuetime": "2026/10/03 06:16",
-      "last_push": 1790979628.352381
-    }
-  },
+  "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 6.5,
+      "last_temp": 7.3,
       "last_rain_prob": 0,
       "last_aqi": 43,
       "last_wx_code": 0
     },
     "梧州": {
-      "last_temp": 23.9,
+      "last_temp": 24.0,
       "last_rain_prob": 82,
       "last_aqi": 62,
       "last_wx_code": 53
     },
     "海参崴": {
-      "last_temp": 11.7,
+      "last_temp": 11.9,
       "last_rain_prob": 0,
       "last_aqi": 26,
       "last_wx_code": 1
