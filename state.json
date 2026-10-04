@@ -10,27 +10,23 @@
     "梧州|雷电|黄": {
       "issuetime": "2026/10/04 13:32",
       "last_push": 1791092424.402202
-    },
-    "梧州|暴雨|橙": {
-      "issuetime": "2026/10/04 13:18",
-      "last_push": 1791091832.502192
     }
   },
   "wx": {
     "通化": {
-      "last_temp": 11.1,
+      "last_temp": 11.0,
       "last_rain_prob": 99,
-      "last_aqi": 57,
+      "last_aqi": 58,
       "last_wx_code": 53
     },
     "梧州": {
-      "last_temp": 29.1,
+      "last_temp": 29.3,
       "last_rain_prob": 51,
       "last_aqi": 65,
       "last_wx_code": 1
     },
     "海参崴": {
-      "last_temp": 14.5,
+      "last_temp": 14.4,
       "last_rain_prob": 34,
       "last_aqi": 53,
       "last_wx_code": 3
