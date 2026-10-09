@@ -6,21 +6,16 @@
   "last_rain_prob": 0,
   "last_weather_code": 0,
   "last_check": "2026-09-21T07:43:42.905874",
-  "nmc_pushed": {
-    "通化|大雾|黄": {
-      "issuetime": "2026/10/09 07:33",
-      "last_push": 1791513675.258358
-    }
-  },
+  "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 20.1,
+      "last_temp": 20.5,
       "last_rain_prob": 0,
       "last_aqi": 57,
       "last_wx_code": 0
     },
     "梧州": {
-      "last_temp": 27.8,
+      "last_temp": 27.9,
       "last_rain_prob": 0,
       "last_aqi": 63,
       "last_wx_code": 3
