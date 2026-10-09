@@ -11,11 +11,11 @@
     "通化": {
       "last_temp": 8.6,
       "last_rain_prob": 0,
-      "last_aqi": 91,
+      "last_aqi": 94,
       "last_wx_code": 3
     },
     "梧州": {
-      "last_temp": 20.3,
+      "last_temp": 20.2,
       "last_rain_prob": 0,
       "last_aqi": 77,
       "last_wx_code": 0
