@@ -14,15 +14,15 @@
   },
   "wx": {
     "通化": {
-      "last_temp": 10.1,
+      "last_temp": 10.9,
       "last_rain_prob": 0,
-      "last_aqi": 68,
+      "last_aqi": 66,
       "last_wx_code": 1
     },
     "梧州": {
-      "last_temp": 23.4,
+      "last_temp": 23.9,
       "last_rain_prob": 0,
-      "last_aqi": 67,
+      "last_aqi": 68,
       "last_wx_code": 0
     },
     "海参崴": {
