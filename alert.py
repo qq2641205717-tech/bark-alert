@@ -54,10 +54,9 @@ def http_get_json(url, timeout=12):
 def bark(title, l1, l2, l3, level="timeSensitive", sound=None, group="wx", url=None):
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
-    # critical 级别: 深夜(22:00-07:00北京时间)连推10次叫醒, 白天只推1次
+    # critical 级别: 连推3声
     if level == "critical":
-        bj_hour = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).hour
-        times = 10 if (bj_hour >= 22 or bj_hour < 7) else 1
+        times = 3
     else:
         times = 1
     payload = {"title":title, "body":f"{l1}\n{l2}\n{l3}", "level":level, "group":group}
@@ -345,23 +344,27 @@ def check_nmc_alerts(s):
 # ---------- 地震 ----------
 def _eq_level(mag, intensity, dist):
     """分级:
-    critical(10响): 只给致命地震 - M>=6.0 / 当地强震(<=100km且M>=5.0)
-    timeSensitive(1响): 其他地震 - 附近小震/远处中强震/当地有感小震
+    critical(3响): 只有威胁到安全的 - M>=7且<=300km / M>=6且<=100km / M>=5且<=50km / M>=4且<=50km
+    timeSensitive(1响): 远处强震/附近有感 - 见下
     """
-    # critical: 1500km内的6级以上, 或100km内的5级以上
-    if mag >= 6.0 and dist <= 1500:
+    # critical: 强响
+    if mag >= 7.0 and dist <= 300:
         return "critical", "alarm", "强震M"
-    if dist <= 100 and mag >= 5.0:
+    if mag >= 6.0 and dist <= 100:
+        return "critical", "alarm", "强震M"
+    if mag >= 5.0 and dist <= 50:
         return "critical", "alarm", "当地强震"
-    # timeSensitive: 远处强震/附近小震
-    if mag >= 6.0 and dist > 1500:
-        return "timeSensitive", "update", "远处强震"
-    if dist <= 500 and mag >= 3.0:
-        return "timeSensitive", "update", "附近地震"
-    if dist <= 1000 and mag >= 5.0:
+    if mag >= 4.0 and dist <= 50:
+        return "critical", "alarm", "当地地震"
+    # timeSensitive: 轻响
+    if mag >= 6.0 and dist <= 800:
+        return "timeSensitive", "update", "远强震"
+    if mag >= 5.0 and dist <= 500:
         return "timeSensitive", "update", "中强震"
-    if dist <= 100 and mag >= 3.0:
-        return "timeSensitive", "update", "当地小震"
+    if mag >= 4.0 and dist <= 500:
+        return "timeSensitive", "update", "有感地震"
+    if mag >= 3.0 and dist <= 500:
+        return "timeSensitive", "update", "附近地震"
     return None
 
 def check_earthquake(s):
