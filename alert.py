@@ -356,7 +356,7 @@ def _eq_level(mag, intensity, dist):
     # timeSensitive: 远处强震/附近小震
     if mag >= 6.0 and dist > 1500:
         return "timeSensitive", "update", "远处强震"
-    if dist <= 300 and mag >= 3.0:
+    if dist <= 500 and mag >= 3.0:
         return "timeSensitive", "update", "附近地震"
     if dist <= 1000 and mag >= 5.0:
         return "timeSensitive", "update", "中强震"
