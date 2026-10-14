@@ -11,7 +11,7 @@ Bark 双地点在线预警
   - 早上7点:  各地点当天天气
   - 傍晚18点: 各地点今夜到明早
 """
-import os, sys, json, math, urllib.request, datetime
+import os, sys, json, math, time, urllib.request, datetime
 
 # ---------- 双地点 ----------
 LOCATIONS = [
@@ -143,49 +143,56 @@ def check_weather(s):
             h = d["hourly"]; times=h["time"]; probs=h["precipitation_probability"]
             now = cur["time"]; idx = next((i for i,t in enumerate(times) if t>=now), 0)
             nxt = max((int(probs[j] or 0) for j in range(idx, min(idx+4, len(probs)))), default=0)
-            if nxt >= 60 and st.get("last_rain_prob",0) < 30:
-                bark(f"{name} 🌧️将降雨{nxt}%",
-                     f"未来3小时降水{nxt}%",
-                     f"当前{wmo(code)} {temp}°",
-                     "出门请带伞",
-                     level="timeSensitive", sound="rain", group="wx")
             st["last_temp"] = temp; st["last_rain_prob"] = nxt
 
-            # --- 雨/雪变化检测 ---
-            def precip_level(c):
-                if c in (0,1,2,3,45,48): return 0
-                if c in (51,53,55,56,57,61,71,77,80,85): return 1
-                if c in (63,73,81): return 2
-                if c in (65,66,67,75,82,86,95,96,99): return 3
-                return 0
+            # --- 雨/雪变化检测(基于降水概率状态机, 防抖动) ---
+            # 状态: 1=在下雨/雪, 0=不在, None=模糊带(30-50%不触发变化)
+            def rain_state(p):
+                return 1 if p >= 50 else (0 if p < 30 else None)
             def precip_type(c):
                 if c in (51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99): return "雨"
                 if c in (71,73,75,77,85,86): return "雪"
                 return ""
-            old_code = st.get("last_wx_code")
-            new_lvl = precip_level(code)
-            old_lvl = precip_level(old_code) if old_code is not None else None
-            if old_lvl is not None:
-                pt = precip_type(code) or precip_type(old_code)
-                if old_lvl == 0 and new_lvl > 0:
-                    bark(f"{name} 🌧️开始{pt}",
-                         f"现在{wmo(code)} {temp}°",
-                         f"降水概率{nxt}%",
-                         f"出门记得带{pt=='雪' and '防滑' or '伞'}",
-                         level="timeSensitive", sound="rain", group="wx")
-                elif old_lvl > 0 and new_lvl == 0:
-                    bark(f"{name} 🌤️{pt}停了",
-                         f"现在{wmo(code)} {temp}°",
-                         f"降水概率{nxt}%",
-                         f"{pt}渐止放晴",
-                         level="timeSensitive", group="wx")
-                elif new_lvl > old_lvl and old_lvl > 0:
-                    bark(f"{name} ⛈️{pt}越下越大",
-                         f"现在{wmo(code)} {temp}°",
-                         f"降水概率{nxt}%",
-                         f"注意防范",
-                         level="timeSensitive", sound="rain", group="wx")
-            st["last_wx_code"] = code
+            now_ts = time.time()
+            st.setdefault("last_rain_state", None)
+            st.setdefault("last_rain_change", 0)
+            st.setdefault("last_nxt", 0)
+            old_st = st.get("last_rain_state")
+            new_st = rain_state(nxt)
+            pt = precip_type(code)
+            cooldown = 2 * 3600  # 同一地点同类提醒冷却2小时
+            # 首采只建基线, 不推
+            if old_st is None:
+                if new_st is not None:
+                    st["last_rain_state"] = new_st
+                    st["last_nxt"] = nxt
+            # 开始下雨/雪
+            elif new_st == 1 and old_st == 0 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
+                bark(f"{name} 🌧️开始{pt or '降雨'}",
+                     f"未来3小时降水{nxt}%",
+                     f"现在{wmo(code)} {temp}°",
+                     f"出门记得带{pt=='雪' and '防滑' or '伞'}",
+                     level="timeSensitive", sound="rain", group="wx")
+                st["last_rain_state"] = 1; st["last_rain_change"] = now_ts
+            # 雨/雪停了
+            elif new_st == 0 and old_st == 1 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
+                bark(f"{name} 🌤️{pt or '降雨'}趋停",
+                     f"未来3小时降水{nxt}%",
+                     f"现在{wmo(code)} {temp}°",
+                     f"{pt or '雨'}渐止放晴",
+                     level="timeSensitive", group="wx")
+                st["last_rain_state"] = 0; st["last_rain_change"] = now_ts
+            # 雨越下越大: 降水概率比上次涨>=30且已在下雨
+            elif new_st == 1 and old_st == 1 and nxt - st.get("last_nxt",0) >= 30 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
+                bark(f"{name} ⛈️{pt or '雨'}越下越大",
+                     f"未来3小时降水{nxt}%",
+                     f"现在{wmo(code)} {temp}°",
+                     f"注意防范",
+                     level="timeSensitive", sound="rain", group="wx")
+                st["last_rain_change"] = now_ts
+            if new_st is not None:
+                st["last_rain_state"] = new_st
+                st["last_nxt"] = nxt
             print(f"[WX] {name} {temp}° {wmo(code)} 近3h降水{nxt}%")
         except Exception as e:
             print(f"[WX {name} ERR] {e}")
