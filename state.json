@@ -7,10 +7,6 @@
   "last_weather_code": 0,
   "last_check": "2026-09-21T07:43:42.905874",
   "nmc_pushed": {
-    "通化|大风|蓝": {
-      "issuetime": "2026/10/18 09:04",
-      "last_push": 1792285826.254125
-    },
     "通化|寒潮|蓝": {
       "issuetime": "2026/10/18 09:28",
       "last_push": 1792288519.648312
@@ -28,7 +24,7 @@
     },
     "梧州": {
       "last_temp": 29.9,
-      "last_rain_prob": 63,
+      "last_rain_prob": 49,
       "last_aqi": 52,
       "last_wx_code": 0,
       "last_rain_state": 1,
