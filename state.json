@@ -9,7 +9,7 @@
   "nmc_pushed": {
     "通化|寒潮|蓝": {
       "issuetime": "2026/10/18 11:38",
-      "last_push": 1792295123.840403
+      "last_push": 1792305924.663706
     },
     "通化|大风|蓝": {
       "issuetime": "2026/10/18 12:27",
@@ -18,7 +18,7 @@
   },
   "wx": {
     "通化": {
-      "last_temp": 11.9,
+      "last_temp": 11.3,
       "last_rain_prob": 70,
       "last_aqi": 46,
       "last_wx_code": 0,
