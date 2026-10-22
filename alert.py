@@ -445,6 +445,41 @@ def check_earthquake(s):
             s["last_tsunami_info"] = info
     except Exception as e: print(f"[TSUNAMI ERR] {e}")
 
+    # USGS 全球地震(官方, 覆盖全球)
+    try:
+        d = http_get_json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson")
+        feats = d.get("features", [])
+        last = s.get("last_usgs","")
+        for f in feats:  # 按时间新→旧
+            fid = f.get("id","")
+            if not fid or fid == last:
+                continue
+            p = f.get("properties",{})
+            mag = float(p.get("mag") or 0)
+            if mag < 3.0:
+                continue
+            coords = f.get("geometry",{}).get("coordinates",[])
+            if len(coords) < 2:
+                continue
+            elon, elat = coords[0], coords[1]
+            dist = min(hav(loc["lat"], loc["lon"], elat, elon) for loc in LOCATIONS)
+            lvl = _eq_level(mag, 0, dist)
+            if not lvl:
+                continue
+            level, sound, tag = lvl
+            name, dmin = nearest_loc(elat, elon)
+            t = p.get("time") or 0
+            hh = f"{int(t//3600%24):02d}:{int(t//60%60):02d}"
+            bark(f"📡{tag} M{mag}",
+                 f"距{name} {dmin:.0f}km",
+                 f"{str(p.get('place','?'))[:24]}",
+                 f"USGS {hh}Z",
+                 level=level, sound=sound, group="eq",
+                 url="https://earthquake.usgs.gov/")
+            s["last_usgs"] = fid
+            break  # 每轮只推最新一条
+    except Exception as e: print(f"[USGS ERR] {e}")
+
 # ---------- 入口 ----------
 if __name__=="__main__":
     mode=sys.argv[1] if len(sys.argv)>1 else "all"
