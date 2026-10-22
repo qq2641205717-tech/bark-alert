@@ -351,8 +351,8 @@ def check_nmc_alerts(s):
 # ---------- 地震 ----------
 def _eq_level(mag, intensity, dist):
     """分级:
-    critical(3响): 只有威胁到安全的 - M>=7且<=300km / M>=6且<=100km / M>=5且<=50km / M>=4且<=50km
-    timeSensitive(1响): 远处强震/附近有感 - 见下
+    critical(3响): 威胁到安全的 - M>=9无限制 / M>=8<=2000km / M>=7<=300km / M>=6<=100km / M>=5<=50km / M>=4<=50km
+    timeSensitive(1响): 大地震无论多远至少通知 - M>=7无上限 / 见下
     """
     # critical: 强响
     # 超强震(灾难级)无距离限制, 必须提醒
@@ -369,10 +369,11 @@ def _eq_level(mag, intensity, dist):
     if mag >= 4.0 and dist <= 50:
         return "critical", "alarm", "当地地震"
     # timeSensitive: 轻响
+    # 7级以上破坏性大地震, 无论多远都至少通知
     if mag >= 8.0 and dist > 2000:
         return "timeSensitive", "update", "远强震"
-    if mag >= 7.0 and dist <= 800:
-        return "timeSensitive", "update", "中强震"
+    if mag >= 7.0 and dist > 300:
+        return "timeSensitive", "update", "大地震"
     if mag >= 6.0 and dist <= 800:
         return "timeSensitive", "update", "远强震"
     if mag >= 5.0 and dist <= 500:
