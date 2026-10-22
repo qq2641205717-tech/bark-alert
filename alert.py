@@ -358,7 +358,7 @@ def _eq_level(mag, intensity, dist):
     # 超强震(灾难级)无距离限制, 必须提醒
     if mag >= 9.0:
         return "critical", "alarm", "超级强震"
-    if mag >= 8.0 and dist <= 2000:
+    if mag >= 8.0 and dist <= 800:
         return "critical", "alarm", "强震M"
     if mag >= 7.0 and dist <= 300:
         return "critical", "alarm", "强震M"
@@ -370,7 +370,7 @@ def _eq_level(mag, intensity, dist):
         return "critical", "alarm", "当地地震"
     # timeSensitive: 轻响
     # 7级以上破坏性大地震, 无论多远都至少通知
-    if mag >= 8.0 and dist > 2000:
+    if mag >= 8.0 and dist > 800:
         return "timeSensitive", "update", "远强震"
     if mag >= 7.0 and dist > 300:
         return "timeSensitive", "update", "大地震"
@@ -398,10 +398,11 @@ def check_earthquake(s):
                 lvl = _eq_level(mag, intensity, dist)
                 if lvl:
                     level, sound, tag = lvl
+                    t = str(e.get("OriginTime",""))
                     bark(f"🚨{tag} M{mag}",
-                         f"距{name} {dist:.0f}km",
-                         f"深{e.get('Depth','?')}km 烈度{intensity}",
-                         f"{e.get('HypoCenter','?')} {e.get('OriginTime','')[11:16]}",
+                         f"{e.get('HypoCenter','?')} {t[5:16] if len(t)>=16 else t}",
+                         f"距{name} {dist:.0f}km 深{e.get('Depth','?')}km",
+                         f"烈度{intensity} · CENC EEW",
                          level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
     except Exception as e: print(f"[EQ EEW ERR] {e}")
@@ -420,10 +421,11 @@ def check_earthquake(s):
                 lvl = _eq_level(mag, intensity, dist)
                 if lvl:
                     level, sound, tag = lvl
+                    t = str(latest.get("time",""))
                     bark(f"📢{tag} M{mag}",
-                         f"距{name} {dist:.0f}km",
-                         f"深{latest.get('depth','?')}km",
-                         f"{latest.get('location','?')} {latest.get('time','')[11:16]}",
+                         f"{latest.get('location','?')} {t[5:16] if len(t)>=16 else t}",
+                         f"距{name} {dist:.0f}km 深{latest.get('depth','?')}km",
+                         f"{'烈度'+str(latest.get('intensity')) if latest.get('intensity') else 'CENC速报'}",
                          level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
     except Exception as e: print(f"[EQ LIST ERR] {e}")
