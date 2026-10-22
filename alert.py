@@ -355,6 +355,11 @@ def _eq_level(mag, intensity, dist):
     timeSensitive(1响): 远处强震/附近有感 - 见下
     """
     # critical: 强响
+    # 超强震(灾难级)无距离限制, 必须提醒
+    if mag >= 9.0:
+        return "critical", "alarm", "超级强震"
+    if mag >= 8.0 and dist <= 2000:
+        return "critical", "alarm", "强震M"
     if mag >= 7.0 and dist <= 300:
         return "critical", "alarm", "强震M"
     if mag >= 6.0 and dist <= 100:
@@ -364,6 +369,10 @@ def _eq_level(mag, intensity, dist):
     if mag >= 4.0 and dist <= 50:
         return "critical", "alarm", "当地地震"
     # timeSensitive: 轻响
+    if mag >= 8.0 and dist > 2000:
+        return "timeSensitive", "update", "远强震"
+    if mag >= 7.0 and dist <= 800:
+        return "timeSensitive", "update", "中强震"
     if mag >= 6.0 and dist <= 800:
         return "timeSensitive", "update", "远强震"
     if mag >= 5.0 and dist <= 500:
