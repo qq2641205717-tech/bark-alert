@@ -6,7 +6,12 @@
   "last_rain_prob": 0,
   "last_weather_code": 0,
   "last_check": "2026-09-21T07:43:42.905874",
-  "nmc_pushed": {},
+  "nmc_pushed": {
+    "通化|大雾|黄": {
+      "issuetime": "2026/10/24 21:31",
+      "last_push": 1792849223.197358
+    }
+  },
   "wx": {
     "通化": {
       "last_temp": 5.7,
