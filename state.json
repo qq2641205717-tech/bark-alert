@@ -8,15 +8,15 @@
   "last_check": "2026-09-21T07:43:42.905874",
   "nmc_pushed": {
     "通化|大雾|橙": {
-      "issuetime": "2026/10/30 05:00",
-      "last_push": 1793307921.012921
+      "issuetime": "2026/10/30 05:30",
+      "last_push": 1793311239.746505
     }
   },
   "wx": {
     "通化": {
-      "last_temp": -0.9,
+      "last_temp": -0.8,
       "last_rain_prob": 0,
-      "last_aqi": 70,
+      "last_aqi": 71,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1793268921.4408176,
@@ -25,7 +25,7 @@
     "梧州": {
       "last_temp": 21.7,
       "last_rain_prob": 0,
-      "last_aqi": 95,
+      "last_aqi": 98,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1792314923.5327785,
