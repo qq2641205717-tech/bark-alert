@@ -24,12 +24,12 @@
     },
     "梧州": {
       "last_temp": 22.0,
-      "last_rain_prob": 12,
+      "last_rain_prob": 9,
       "last_aqi": 69,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1792314923.5327785,
-      "last_nxt": 12
+      "last_nxt": 9
     },
     "海参崴": {
       "last_temp": 13.8,
