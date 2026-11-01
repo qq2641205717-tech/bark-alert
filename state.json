@@ -9,22 +9,22 @@
   "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 3.8,
-      "last_rain_prob": 43,
+      "last_temp": 3.9,
+      "last_rain_prob": 25,
       "last_aqi": 60,
       "last_wx_code": 0,
-      "last_rain_state": 1,
-      "last_rain_change": 1793463321.230981,
-      "last_nxt": 63
+      "last_rain_state": 0,
+      "last_rain_change": 1793513731.3861103,
+      "last_nxt": 25
     },
     "梧州": {
-      "last_temp": 31.2,
-      "last_rain_prob": 18,
+      "last_temp": 31.4,
+      "last_rain_prob": 15,
       "last_aqi": 76,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1792314923.5327785,
-      "last_nxt": 18
+      "last_nxt": 15
     },
     "海参崴": {
       "last_temp": 13.8,
