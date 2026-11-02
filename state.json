@@ -9,7 +9,7 @@
   "nmc_pushed": {
     "梧州|雷电|黄": {
       "issuetime": "2026/11/02 16:25",
-      "last_push": 1793608237.650802
+      "last_push": 1793619043.600724
     },
     "梧州|暴雨|橙": {
       "issuetime": "2026/11/02 17:10",
@@ -18,7 +18,7 @@
   },
   "wx": {
     "通化": {
-      "last_temp": 0.2,
+      "last_temp": 0.1,
       "last_rain_prob": 0,
       "last_aqi": 62,
       "last_wx_code": 0,
