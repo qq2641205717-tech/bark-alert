@@ -9,12 +9,12 @@
   "nmc_pushed": {
     "通化|大雾|黄": {
       "issuetime": "2026/11/04 04:03",
-      "last_push": 1793736638.667831
+      "last_push": 1793747477.13032
     }
   },
   "wx": {
     "通化": {
-      "last_temp": -1.1,
+      "last_temp": -0.6,
       "last_rain_prob": 0,
       "last_aqi": 90,
       "last_wx_code": 0,
