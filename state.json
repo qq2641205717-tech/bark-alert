@@ -15,15 +15,15 @@
   "wx": {
     "通化": {
       "last_temp": 10.3,
-      "last_rain_prob": 7,
+      "last_rain_prob": 15,
       "last_aqi": 107,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1793668522.640025,
-      "last_nxt": 7
+      "last_nxt": 15
     },
     "梧州": {
-      "last_temp": 24.9,
+      "last_temp": 24.7,
       "last_rain_prob": 31,
       "last_aqi": 64,
       "last_wx_code": 0,
