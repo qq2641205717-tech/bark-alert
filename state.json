@@ -14,7 +14,7 @@
   },
   "wx": {
     "通化": {
-      "last_temp": 12.3,
+      "last_temp": 12.4,
       "last_rain_prob": 0,
       "last_aqi": 92,
       "last_wx_code": 0,
@@ -24,12 +24,12 @@
     },
     "梧州": {
       "last_temp": 27.9,
-      "last_rain_prob": 75,
+      "last_rain_prob": 86,
       "last_aqi": 80,
       "last_wx_code": 0,
       "last_rain_state": 1,
       "last_rain_change": 1793754923.2591991,
-      "last_nxt": 75
+      "last_nxt": 86
     },
     "海参崴": {
       "last_temp": 13.8,
