@@ -12,8 +12,8 @@
       "last_push": 1793866825.804741
     },
     "通化|天气|蓝": {
-      "issuetime": "2026/11/05 16:55",
-      "last_push": 1793869521.740587
+      "issuetime": "2026/11/05 17:10",
+      "last_push": 1793870127.164608
     },
     "梧州|雷电|黄": {
       "issuetime": "2026/11/05 16:49",
@@ -22,8 +22,8 @@
   },
   "wx": {
     "通化": {
-      "last_temp": 7.6,
-      "last_rain_prob": 57,
+      "last_temp": 7.0,
+      "last_rain_prob": 42,
       "last_aqi": 81,
       "last_wx_code": 0,
       "last_rain_state": 1,
@@ -31,13 +31,13 @@
       "last_nxt": 57
     },
     "梧州": {
-      "last_temp": 26.9,
-      "last_rain_prob": 90,
+      "last_temp": 26.3,
+      "last_rain_prob": 85,
       "last_aqi": 48,
       "last_wx_code": 0,
       "last_rain_state": 1,
       "last_rain_change": 1793754923.2591991,
-      "last_nxt": 90
+      "last_nxt": 85
     },
     "海参崴": {
       "last_temp": 13.8,
