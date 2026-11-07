@@ -9,9 +9,9 @@
   "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": -9.4,
+      "last_temp": -9.3,
       "last_rain_prob": 1,
-      "last_aqi": 66,
+      "last_aqi": 68,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1793873723.1440039,
@@ -20,7 +20,7 @@
     "梧州": {
       "last_temp": 21.2,
       "last_rain_prob": 2,
-      "last_aqi": 57,
+      "last_aqi": 58,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1794063136.2619343,
