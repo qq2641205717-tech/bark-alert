@@ -111,8 +111,13 @@ def aqi_level(aqi):
 
 def check_weather(s):
     wx = s.setdefault("wx", {})
+    # 清理已从监控列表移除的旧地点残留状态(如已删除的海参崴)
+    valid_names = {loc["name"] for loc in LOCATIONS}
+    for k in list(wx.keys()):
+        if k not in valid_names:
+            wx.pop(k, None)
     # --- 早晚报: 按北京时间窗口判断, 每天只发一次 ---
-    bj_now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+    bj_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
     bj_date = bj_now.strftime("%Y-%m-%d")
     bj_hour = bj_now.hour
     last_morning = s.get("last_morning", "")
@@ -351,7 +356,7 @@ def check_nmc_alerts(s):
 # ---------- 地震 ----------
 def _eq_level(mag, intensity, dist):
     """分级:
-    critical(3响): 威胁到安全的 - M>=9无限制 / M>=8<=2000km / M>=7<=300km / M>=6<=100km / M>=5<=50km / M>=4<=50km
+    critical(3响): 威胁到安全的 - M>=9无限制 / M>=8<=800km / M>=7<=300km / M>=6<=100km / M>=5<=50km / M>=4<=50km
     timeSensitive(1响): 大地震无论多远至少通知 - M>=7无上限 / 见下
     """
     # critical: 强响
