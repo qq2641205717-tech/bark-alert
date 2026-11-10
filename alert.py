@@ -27,6 +27,16 @@ Bark 双地点在线预警
   - watchdog 模式: state 超 15 分钟无成功运行才记一次 stale,
     连续 2 次 stale 且距上次提醒 >1 小时才发一条 timeSensitive 提醒,
     绝不用 critical, 避免单次排队延迟造成误报
+状态文件分流 (2026-11-10 晚报刷屏修复):
+  - 天气/地震/watchdog 各写各的文件 (wx_state.json / eq_state.json /
+    wd_state.json), 不再共用同一个 state.json。之前共用一个文件时,
+    两个 workflow 每分钟同时回写, git pull --rebase 必然冲突,
+    而回写步骤用 `|| true` 把失败吞掉、表面仍显示成功, 导致
+    last_evening=2026-11-10 始终推不回 main, 晚报在 17:00-17:13
+    每分钟重发一次 (14 次运行, 28 条)。分流后不同文件 rebase
+    不再冲突; 回写失败时 workflow 必须真正报错 (见各 yml)。
+  - 首次分流运行时, 各模式从旧 state.json 里只迁移自己那几项
+    (见 migrate_legacy_state), 旧文件留作迁移源, 不要删。
 """
 import os, sys, json, math, time, urllib.request, datetime
 
@@ -57,11 +67,83 @@ def load_state():
         with open(STATE_FILE, encoding="utf-8") as f: return json.load(f)
     except Exception: return {}
 
-def save_state(s):
-    tmp = STATE_FILE + ".tmp"
+def save_state(s, path=None):
+    target = path or STATE_FILE
+    tmp = target + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(s, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, STATE_FILE)
+    os.replace(tmp, target)
+
+# --- 状态分流: 每个模式只写自己的文件, 互不覆盖 ---
+_STATE_KEYS = {
+    "weather": {"wx", "last_morning", "last_evening", "nmc_pushed", "heartbeat"},
+    "earthquake": {"last_eew_id", "last_eq_id", "last_tsunami_info", "last_usgs", "heartbeat"},
+    "watchdog": {"watchdog", "heartbeat"},
+}
+_MODE_STATE_FILE = {
+    "weather": "wx_state.json", "morning": "wx_state.json", "evening": "wx_state.json",
+    "earthquake": "eq_state.json", "watchdog": "wd_state.json",
+}
+
+def state_file_for(mode):
+    """该模式的状态文件. 显式设置了 STATE_FILE 环境变量时优先用它
+    (workflow 里也会显式传, 双保险); 否则按模式分流; 未知模式用旧 state.json."""
+    env = os.environ.get("STATE_FILE")
+    if env:
+        return env
+    base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, _MODE_STATE_FILE.get(mode, "state.json"))
+
+def load_state_file(path):
+    try:
+        with open(path, encoding="utf-8") as f: return json.load(f)
+    except Exception: return {}
+
+def migrate_legacy_state(legacy, mode):
+    """首次分流: 从旧 state.json 里只拿本模式那几项, 别模式的键不带走,
+    否则分流后又会把对方的旧值写回自己的文件, 再次互相覆盖."""
+    keys = _STATE_KEYS.get(mode, set())
+    return {k: v for k, v in (legacy or {}).items() if k in keys}
+
+def load_state_for_mode(mode):
+    """加载某模式的状态: 自己的文件在就用它; 不在且旧 state.json 在,
+    就从旧文件迁移本模式的键 (下次保存时落盘到自己的文件)."""
+    path = state_file_for(mode)
+    if os.path.isfile(path):
+        return load_state_file(path)
+    base = os.path.dirname(os.path.abspath(__file__))
+    legacy = os.path.join(base, "state.json")
+    if path != legacy and os.path.isfile(legacy):
+        print(f"[STATE] {mode}: 自己的 {os.path.basename(path)} 还没有, 从旧 state.json 迁移")
+        return migrate_legacy_state(load_state_file(legacy), mode)
+    return {}
+
+def freshest_heartbeat(*heartbeats):
+    """取最新的一条 heartbeat (按 last_ok 解析, 解析失败的忽略).
+    watchdog 要看天气和地震两个模式的存活, 哪个新就信哪个."""
+    best, best_dt = {}, None
+    for hb in heartbeats:
+        if not isinstance(hb, dict):
+            continue
+        try:
+            dt = datetime.datetime.fromisoformat(str(hb.get("last_ok", "")).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if best_dt is None or dt > best_dt:
+            best, best_dt = hb, dt
+    return best
+
+def load_watchdog_state():
+    """watchdog 自己的状态 (wd_state.json) + 天气/地震两个心跳里最新的一条.
+    三个文件各写各的, watchdog 只读天气/地震的心跳, 不写它们的文件."""
+    s = load_state_for_mode("watchdog")
+    candidates = [s.get("heartbeat")]
+    for mode in ("weather", "earthquake"):
+        p = state_file_for(mode)
+        if os.path.isfile(p):
+            candidates.append(load_state_file(p).get("heartbeat"))
+    s["heartbeat"] = freshest_heartbeat(*candidates)
+    return s
 
 def http_get_json(url, timeout=12, retries=3, headers=None):
     """外部请求带重试: 3 次, 间隔 2s / 5s, 3 次都失败才抛, 调用方按源分别捕获."""
@@ -268,7 +350,38 @@ def aqi_level(aqi):
     if aqi <= 200: return "😷", "空气被污染", "polluted"
     return "🚨", "空气严重污染", "severe"
 
-def check_weather(s):
+def send_morning_if_due(s, persist=None):
+    """早报: 7-10 点窗口内、今天还没发过才发, 发完立刻把标记写下来.
+    persist 是保存回调 (主入口传 save_state): 发完立刻落盘, 即使后面
+    的天气检查出异常、进程提前退出, 这条已发标记也不会丢, 下一分钟
+    不会再发一次。没有 persist 时只改内存里的 s (供离线测试用)."""
+    bj_now = fmt_bj_now()
+    bj_date = bj_now.strftime("%Y-%m-%d")
+    if 7 <= bj_now.hour < 10 and s.get("last_morning") != bj_date:
+        print(f"[FORECAST] 发送早报 {bj_now.strftime('%H:%M')}")
+        morning_forecast()
+        s["last_morning"] = bj_date
+        if persist:
+            persist(s)
+        return True
+    return False
+
+def send_evening_if_due(s, persist=None):
+    """晚报: 17-22 点窗口内、今天还没发过才发, 发完立刻落盘 (同上).
+    这就是 2026-11-10 刷屏的直接防线: 标记一旦落盘, 下一分钟
+    读到的就是今天已发, 不会再推."""
+    bj_now = fmt_bj_now()
+    bj_date = bj_now.strftime("%Y-%m-%d")
+    if 17 <= bj_now.hour < 22 and s.get("last_evening") != bj_date:
+        print(f"[FORECAST] 发送晚报 {bj_now.strftime('%H:%M')}")
+        evening_forecast()
+        s["last_evening"] = bj_date
+        if persist:
+            persist(s)
+        return True
+    return False
+
+def check_weather(s, persist=None):
     wx = s.setdefault("wx", {})
     # 清理已从监控列表移除的旧地点残留状态(如已删除的海参崴)
     valid_names = {loc["name"] for loc in LOCATIONS}
@@ -276,19 +389,8 @@ def check_weather(s):
         if k not in valid_names:
             wx.pop(k, None)
     # --- 早晚报: 按北京时间窗口判断, 每天只发一次 ---
-    bj_now = fmt_bj_now()
-    bj_date = bj_now.strftime("%Y-%m-%d")
-    bj_hour = bj_now.hour
-    last_morning = s.get("last_morning", "")
-    last_evening = s.get("last_evening", "")
-    if 7 <= bj_hour < 10 and last_morning != bj_date:
-        print(f"[FORECAST] 发送早报 {bj_now.strftime('%H:%M')}")
-        morning_forecast()
-        s["last_morning"] = bj_date
-    if 17 <= bj_hour < 22 and last_evening != bj_date:
-        print(f"[FORECAST] 发送晚报 {bj_now.strftime('%H:%M')}")
-        evening_forecast()
-        s["last_evening"] = bj_date
+    send_morning_if_due(s, persist=persist)
+    send_evening_if_due(s, persist=persist)
     for loc in LOCATIONS:
         name = loc["name"]
         temp = None; wind = "?"; code = 0; apparent = "?"; humidity = "?"
@@ -735,20 +837,39 @@ def check_watchdog(s):
 # ---------- 入口 ----------
 if __name__=="__main__":
     mode=sys.argv[1] if len(sys.argv)>1 else "all"
-    s=load_state()
     if mode == "watchdog":
+        # watchdog 只写 wd_state.json, 心跳从 wx/eq 两个文件里取最新的
+        STATE_FILE = state_file_for("watchdog")
+        s = load_watchdog_state()
         check_watchdog(s)
+        save_state(s)
+    elif mode in ("morning", "evening"):
+        # 以前这里是直接调 morning_forecast()/evening_forecast(), 不经过
+        # 去重, 外部每分钟调一次就会每分钟发一次。现在走同一套去重:
+        # 只在当天没发过时发, 发完立刻落盘到 wx_state.json。
+        STATE_FILE = state_file_for("weather")
+        s = load_state_for_mode("weather")
+        if mode == "morning":
+            send_morning_if_due(s, persist=save_state)
+        else:
+            send_evening_if_due(s, persist=save_state)
+        s["heartbeat"] = {
+            "last_ok": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "mode": mode,
+        }
+        save_state(s)
     else:
+        # weather / earthquake / all: 各模式只读、只写自己的状态文件
+        STATE_FILE = state_file_for(mode)
+        s = load_state_for_mode(mode) if mode in _MODE_STATE_FILE else load_state()
         if mode in ("earthquake","all"): check_earthquake(s)
         if mode in ("weather","all"):
-            check_weather(s)
+            check_weather(s, persist=save_state)
             check_nmc_alerts(s)
-        if mode=="morning":  morning_forecast()
-        if mode=="evening":   evening_forecast()
         # 每次成功跑完 (各源内部失败已分别捕获, 不影响整轮) 写心跳, 供 watchdog 用
         s["heartbeat"] = {
             "last_ok": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "mode": mode,
         }
-    save_state(s)
+        save_state(s)
     print(f"[OK] {mode} @ {datetime.datetime.now()}")
