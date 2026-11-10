@@ -2,7 +2,19 @@
 """
 Bark 双地点在线预警
 地点: 通化东昌区 + 梧州长洲区
-推送规格: 标题 1 行 + 正文 3 行 (Bark 规格不变, 丰富内容只在 3 行里塞, 不加行)
+推送规格 (2026-11-10 苹果通知适配): 标题 1 行 + 副标题 1 行 + 正文最多 2 行
+ 依据: Bark 官方参数页 (Finb/Bark docs/params.md): subtitle 为可选字段,
+ 显示在标题下方、正文上方的较小字号位置, 不传则不显示这一行; title 显示在
+ 通知卡片第一行, body 为通知卡片主要内容。Bark 官方未给逐字段字数上限;
+ iOS 锁屏折叠态实际能看全的约标题 40-50 字符、正文 90-120 字符 (第三方实测
+ 口径, 非 Apple 官方数字), APNs 整条 payload 上限 4096 字节。本文件自设上限
+ (留足余量, 中文按字计): 标题 <=16 字, 副标题 <=20 字, 正文每行 <=30 字、
+ 合计 <=60 字, 整条通知合计 <=96 字, 超出用 … 截断。
+ - 标题: 最短事件名, 如 温度突变; 紧急只加一个 🚨 前缀, 预警类只加
+ 一个 ⚠️ 前缀, 其余不加 emoji / 箭头 / 温度
+ - 副标题: 时间 + 地点, 如 通化 11-10 09:00
+ - 正文: 只留最关键的数据 + 建议, 次要字段 (上次温度、湿度、PM2.5、
+ 距另一地点距离、来源全称等) 已删掉, 缺数据写 未取到, 不编数
 地震分级: 见 _eq_level, 本次改动未放宽任何阈值, 未升任何 timeSensitive 为 critical
 天气:
   - 每30分钟: 温度突变>=5°C / 降水概率突变 <30->60%
@@ -67,20 +79,55 @@ def http_get_json(url, timeout=12, retries=3, headers=None):
                 time.sleep(2 if attempt == 1 else 5)
     raise last_exc
 
-def bark(title, l1, l2, l3, level="timeSensitive", sound=None, group="wx", url=None):
+# 自设上限: 标题<=16字, 副标题<=20字, 正文每行<=30字、合计<=60字, 整条<=96字
+TITLE_MAX, SUBTITLE_MAX, BODY_LINE_MAX, BODY_MAX = 16, 20, 30, 60
+
+# 通知图标: Bark 官方 icon 字段 = 图片 URL, 替换通知里默认的 Bark 图标,
+# 图标缓存在手机上, 同一 URL 只下载一次, 首次下载超 10 秒退回默认图标,
+# 需要 iOS 15 及以上 (Finb/Bark docs/params.md)。官方没给格式/尺寸要求,
+# 也没有现成的分类型图标, 所以图标文件放本仓库 icons/ 目录, 用
+# raw.githubusercontent.com 直链; 文件随代码一起推上去后链接才生效,
+# 推上去之前图标 URL 是 404, 那条推送会显示默认 Bark 图标, 不会失败。
+ICON_BASE = "https://raw.githubusercontent.com/qq2641205717-tech/bark-alert/main/icons"
+ICONS = {
+    "temp_up": "temp_up.png", "temp_down": "temp_down.png",
+    "rain_start": "rain_start.png", "rain_stop": "rain_stop.png",
+    "rain_heavy": "rain_heavy.png", "snow": "snow.png",
+    "sunny": "sunny.png", "air_bad": "air_bad.png",
+    "morning": "morning.png", "evening": "evening.png",
+    "earthquake": "earthquake.png", "tsunami": "tsunami.png",
+    "warning": "warning.png", "system": "system.png",
+}
+
+def _clip(text, n):
+    """超长截断, 保留前 n-1 字 + …, 保证苹果通知上能看完."""
+    t = "" if text is None else str(text)
+    return t if len(t) <= n else t[:n - 1] + "…"
+
+def bark(title, subtitle, l1, l2=None, level="timeSensitive", sound=None, group="wx", url=None, icon=None):
+    """苹果通知三段式: title 标题 / subtitle 副标题 / body 正文(1-2 行).
+    subtitle 为 Bark 官方可选字段, 不传则 iOS 不显示这一行, 本文件总是传.
+    icon 为 ICONS 里的 key (如 "temp_up"), 按提醒类型选图标, 传错 key 则不发 icon."""
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
-    # critical 级别: 连推3声 (原有行为不变)
     if level == "critical":
         times = 3
     else:
         times = 1
-    payload = {"title": title, "body": f"{l1}\n{l2}\n{l3}", "level": level, "group": group}
+    title = _clip(title, TITLE_MAX)
+    subtitle = _clip(subtitle, SUBTITLE_MAX)
+    lines = [_clip(l1, BODY_LINE_MAX)] + ([_clip(l2, BODY_LINE_MAX)] if l2 else [])
+    body = "\n".join(lines)
+    if len(body) > BODY_MAX:
+        body = body[:BODY_MAX - 1] + "…"
+    payload = {"title": title, "subtitle": subtitle, "body": body,
+               "level": level, "group": group}
     if sound: payload["sound"] = sound
     if url:   payload["url"] = url
+    if icon and icon in ICONS:
+        payload["icon"] = ICON_BASE + "/" + ICONS[icon]
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     for n in range(times):
-        # 每发一次最多试 2 遍, 避免一次网络抖动就丢一条提醒; 不补发已成功的遍
         sent = False
         for attempt in range(1, 3):
             try:
@@ -108,29 +155,82 @@ def fmt_time(t):
 def fmt_bj_now():
     return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
 
-def eq_lines(place, time_str, nearest_name, dist, other_name, other_dist,
-             depth, intensity, source):
-    """地震 3 行文案 (标题已带震级和分级, 这里只补其余字段, 不编数):
-    L1 地点 · 发震时间 / L2 距最近点距离 · 深度 · 烈度 / L3 距另一地点距离 · 来源.
-    depth/intensity 为 '?' 时原样写 '?', 不猜."""
+def fmt_bj_now_str():
+    """当前北京时间, 统一为 '11-10 09:00'."""
+    return fmt_bj_now().strftime("%m-%d %H:%M")
+
+def fmt_iso_bj(s):
+    """ISO UTC 时间 (如 '2026-11-10T03:45:26Z') 转北京时间 '11-10 11:45', 解析失败为 '未取到'."""
+    try:
+        dt = datetime.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        return (dt + datetime.timedelta(hours=8)).strftime("%m-%d %H:%M")
+    except Exception:
+        return "未取到"
+
+def fmt_title(loc, event, prefix=""):
+    """统一标题: 【地点】事件名, prefix 只允许 '' / '🚨' / '⚠️' 其中一个."""
+    return f"{prefix}【{loc}】{event}" if prefix else f"【{loc}】{event}"
+
+def _txt(x):
+    """文本字段: 空 / '?' / None 一律写 '未取到', 不编数."""
+    s = "" if x is None else str(x).strip()
+    return s if s and s != "?" else "未取到"
+
+def _temp(x):
+    """温度字段: 数值写 'X°C', 拿不到写 '未取到'."""
+    if x is None or str(x).strip() in ("", "?"):
+        return "未取到"
+    return f"{x}°C"
+
+def _km(x):
+    """距离字段: 数值写 'Xkm', 拿不到写 '未取到'."""
+    try:
+        return f"{float(x):.0f}km"
+    except Exception:
+        return "未取到"
+
+def _deg(x):
+    """温度简写: 数值取整写 '5°', 拿不到写 '未取到' (省字数)."""
+    try:
+        return f"{float(x):.0f}°"
+    except Exception:
+        return "未取到"
+
+def _sub(loc, time_str):
+    """副标题统一格式: '地点 MM-DD HH:MM', 如 '通化 11-10 09:00'."""
+    return f"{loc} {fmt_time(time_str)}"
+
+def _aqi_advice(tag):
+    if tag == "fresh":
+        return "适宜户外活动"
+    if tag in ("polluted", "severe"):
+        return "请减少户外活动"
+    return "请注意防护"
+
+def eq_short(nearest_name, time_str, dist, depth, intensity, source):
+    """地震三段式文案 (副标题 + 正文 2 行, 不含地点全称):
+    subtitle '地点 MM-DD HH:MM' / L1 '距最近点: …; 深度: …; 烈度: …'
+    / L2 '来源: …'。距另一地点距离为次要字段, 已删掉, 不编数。"""
+    depth_txt = _km(depth)
+    intensity_txt = str(intensity).strip() if str(intensity).strip() not in ("", "?") else "未取到"
     return (
-        f"{str(place)[:24]} · {fmt_time(time_str)}",
-        f"距{nearest_name} {dist:.0f}km · 深{depth}km · 烈度{intensity}",
-        f"距{other_name} {other_dist:.0f}km · {source}",
+        _sub(nearest_name, time_str),
+        f"距{nearest_name}: {_km(dist)}; 深度: {depth_txt}; 烈度: {intensity_txt}",
+        f"来源: {_txt(source)}",
     )
 
 def other_loc(nearest_name):
-    """返回另一个监控点的名字和到它的距离计算用地点, 供 eq_lines 用."""
+    """返回另一个监控点的名字和到它的距离计算用地点, 供 eq_short 用."""
     for loc in LOCATIONS:
         if loc["name"] != nearest_name:
             return loc
     return LOCATIONS[0]
 
 def aqi_text(aqi, pm25):
-    """AQI/PM2.5 一行后缀, 拿不到就返回空串, 不编数."""
+    """AQI/PM2.5 一段, 统一为 'AQI 70, PM2.5 20', 拿不到写 '未取到', 不编数."""
     if aqi is None:
-        return ""
-    return f"AQI {aqi} · PM2.5 {pm25}"
+        return "未取到"
+    return f"AQI {aqi}, PM2.5 {pm25}"
 
 def hav(la1, lo1, la2, lo2):
     R=6371.0
@@ -209,18 +309,18 @@ def check_weather(s):
             humidity = cur.get("relative_humidity_2m", "?")
             st = wx.setdefault(name, {"last_temp":None, "last_rain_prob":0, "last_aqi":None})
             lt = st.get("last_temp")
+            now_txt = fmt_time(cur.get("time", "")) or fmt_bj_now_str()
             if lt is not None and abs(temp-lt) >= 5:
                 diff = temp-lt; arrow = "升温" if diff>0 else "降温"
-                bark(f"{name} 🌡️{arrow}{abs(diff):.1f}°C",
-                     f"现在{temp}° 体感{apparent}° {wmo(code)}",
-                     f"上次{lt}° · 风{wind}km/h · 湿度{humidity}%",
-                     f"{aqi_text(cur_aqi, cur_pm25) + ' · ' if cur_aqi is not None else ''}注意增减衣物",
-                     level="timeSensitive", group="wx")
+                bark(fmt_title(name, "温度突变"), _sub(name, now_txt),
+                    f"现在{_deg(temp)}, 体感{_deg(apparent)}, {arrow}{abs(diff):.1f}°",
+                        f"风{wind}km/h, AQI{cur_aqi if cur_aqi is not None else '未取到'}, 注意增减衣物",
+                            icon="temp_up" if diff > 0 else "temp_down", level="timeSensitive", group="wx")
             h = d["hourly"]; times=h["time"]; probs=h["precipitation_probability"]
             now = cur["time"]; idx = next((i for i,t in enumerate(times) if t>=now), 0)
             nxt = max((int(probs[j] or 0) for j in range(idx, min(idx+4, len(probs)))), default=0)
             _t3 = [float(x) for x in h.get("temperature_2m", [])[idx:idx+4]]
-            t3_txt = f"{min(_t3):.0f}~{max(_t3):.0f}°" if _t3 else "?"
+            t3_txt = f"{min(_t3):.0f}~{max(_t3):.0f}°C" if _t3 else "未取到"
             st["last_temp"] = temp; st["last_rain_prob"] = nxt
 
             # --- 雨/雪变化检测(基于降水概率状态机, 防抖动) ---
@@ -246,27 +346,24 @@ def check_weather(s):
                     st["last_nxt"] = nxt
             # 开始下雨/雪
             elif new_st == 1 and old_st == 0 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
-                bark(f"{name} 🌧️开始{pt or '降雨'}",
-                     f"未来3小时降水{nxt}% · {t3_txt}",
-                     f"现在{wmo(code)} {temp}° 体感{apparent}°",
-                     f"出门记得带{pt=='雪' and '防滑' or '伞'} · 风{wind}km/h",
-                     level="timeSensitive", sound="rain", group="wx")
+                bark(fmt_title(name, f"{pt or '降雨'}开始"), _sub(name, now_txt),
+                    f"未来3小时降水{nxt}%",
+                        f"{'注意防滑' if pt == '雪' else '出门请带伞'}",
+                            icon="snow" if pt == "雪" else "rain_start", level="timeSensitive", sound="rain", group="wx")
                 st["last_rain_state"] = 1; st["last_rain_change"] = now_ts
             # 雨/雪停了
             elif new_st == 0 and old_st == 1 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
-                bark(f"{name} 🌤️{pt or '降雨'}趋停",
-                     f"未来3小时降水{nxt}% · {t3_txt}",
-                     f"现在{wmo(code)} {temp}° 体感{apparent}°",
-                     f"{pt or '雨'}渐止放晴 · 风{wind}km/h",
-                     level="timeSensitive", group="wx")
+                bark(fmt_title(name, f"{pt or '降雨'}趋停"), _sub(name, now_txt),
+                    f"未来3小时降水{nxt}%",
+                        "降水渐止, 可择机出行",
+                            icon="rain_stop", level="timeSensitive", group="wx")
                 st["last_rain_state"] = 0; st["last_rain_change"] = now_ts
             # 雨越下越大: 降水概率比上次涨>=30且已在下雨
             elif new_st == 1 and old_st == 1 and nxt - st.get("last_nxt",0) >= 30 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
-                bark(f"{name} ⛈️{pt or '雨'}越下越大",
-                     f"未来3小时降水{nxt}% · {t3_txt}",
-                     f"现在{wmo(code)} {temp}° 体感{apparent}°",
-                     f"注意防范 · 风{wind}km/h",
-                     level="timeSensitive", sound="rain", group="wx")
+                bark(fmt_title(name, f"{pt or '降雨'}越下越大"), _sub(name, now_txt),
+                    f"未来3小时降水{nxt}%",
+                        "注意防范强降水",
+                            icon="rain_heavy", level="timeSensitive", sound="rain", group="wx")
                 st["last_rain_change"] = now_ts
             if new_st is not None:
                 st["last_rain_state"] = new_st
@@ -289,13 +386,12 @@ def check_weather(s):
             if la is not None:
                 _, _, old_tag = aqi_level(la)
                 if tag and tag != old_tag:
-                    _wx_txt = (f"现在{temp}° {wmo(code)}"
-                               if 'temp' in locals() and temp is not None else "天气数据未取到")
-                    bark(f"{name} {emoji}{desc}",
-                         f"AQI {aqi} (上次{la})",
-                         f"PM2.5 {pm25}μg/m³ · {_wx_txt}",
-                         f"{desc} · 风{wind}km/h",
-                         level="timeSensitive", group="wx")
+                    _wx_txt = (f"{wmo(code)}"
+                               if 'temp' in locals() and temp is not None else "未取到")
+                    bark(fmt_title(name, "空气质量变化"), _sub(name, fmt_bj_now_str()),
+                        f"AQI{aqi}, PM2.5 {pm25}",
+                            _aqi_advice(tag),
+                                icon="air_bad", level="timeSensitive", group="wx")
                     print(f"[AQI] {name} {la}->{aqi} {tag}")
             st2["last_aqi"] = aqi
         except Exception as e:
@@ -317,14 +413,13 @@ def morning_forecast():
             try:
                 _aq = fetch_aqi(loc)
                 _aqi = int(_aq["current"]["us_aqi"]); _pm25 = _aq["current"].get("pm2_5", "?")
-                _aqi_txt = f"AQI {_aqi} · PM2.5 {_pm25}"
+                _aqi_txt = f"AQI {_aqi}, PM2.5 {_pm25}"
             except Exception:
-                _aqi_txt = "AQI 未取到"
-            bark(f"{name} 今日天气",
-                 f"白天 {wmo(today_code)} {tmax}° · 体感{apparent}°",
-                 f"夜间 {tmin}° · 降水{pmax}% · 风{wind}km/h",
-                 f"{_aqi_txt} · 湿度{humidity}%",
-                 level="timeSensitive", group="wx")
+                _aqi_txt = "未取到"
+            bark(fmt_title(name, "今日天气"), f"{name} {fmt_bj_now().strftime('%m-%d')}",
+                f"{wmo(today_code)}, 最高{_deg(tmax)}, 最低{_deg(tmin)}",
+                    f"降水{pmax}%, {_aqi_txt}",
+                        icon="sunny" if today_code in (0, 1) else "morning", level="timeSensitive", group="wx")
         except Exception as e:
             print(f"[MORNING {name} ERR] {e}")
 
@@ -348,14 +443,13 @@ def evening_forecast():
             try:
                 _aq = fetch_aqi(loc)
                 _aqi = int(_aq["current"]["us_aqi"]); _pm25 = _aq["current"].get("pm2_5", "?")
-                _aqi_txt = f"AQI {_aqi} · PM2.5 {_pm25}"
+                _aqi_txt = f"AQI {_aqi}, PM2.5 {_pm25}"
             except Exception:
-                _aqi_txt = "AQI 未取到"
-            bark(f"{name} 今夜到明早",
-                 f"夜间 {wmo(night_code)} 最低{night_low:.0f}° · 降水{max_rain}%",
-                 f"明早 {wmo(morn_code)} {morn_temp:.0f}° · 风{wind}km/h",
-                 f"{_aqi_txt}",
-                 level="timeSensitive", group="wx")
+                _aqi_txt = "未取到"
+            bark(fmt_title(name, "今夜到明早"), f"{name} {fmt_bj_now().strftime('%m-%d')}",
+                f"夜间{wmo(night_code)}, 最低{night_low:.0f}°",
+                    f"明早{wmo(morn_code)}{morn_temp:.0f}°, 降水{max_rain}%",
+                        icon="evening", level="timeSensitive", group="wx")
         except Exception as e:
             print(f"[EVENING {name} ERR] {e}")
 
@@ -432,12 +526,13 @@ def check_nmc_alerts(s):
                 ns = len(info["stations"])
                 station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
                 tag = "持续中" if reason == "持续提醒" else "新预警"
-                bark(f"⚠️{matched} {color}色{wtype}预警",
-                     f"{station_txt} · 共{ns}站发布",
-                     f"发布 {info['time'][5:16].replace('/','-')} · {color}色{wtype}",
-                     f"{tag} · 中央气象台",
-                     level=level, sound=sound, group="alert",
-                     url="http://www.nmc.cn/publish/alarm.html")
+                _pub = info['time'][5:16].replace('/','-') if len(info['time']) >= 16 else _txt(info['time'])
+                bark(fmt_title(matched, f"{wtype}{color}色预警", prefix="⚠️"),
+                    f"{matched} {_pub}",
+                        f"{wtype}{color}色预警, 共{ns}站",
+                            f"{tag}, 中央气象台",
+                                icon="warning", level=level, sound=sound, group="alert",
+                                    url="http://www.nmc.cn/publish/alarm.html")
                 print(f"[NMC] {key} {reason} ({ns}台站)")
 
             pushed[key] = {"issuetime": info["time"],
@@ -501,12 +596,11 @@ def check_earthquake(s):
                 if lvl:
                     level, sound, tag = lvl
                     t = str(e.get("OriginTime",""))
-                    l1, l2, l3 = eq_lines(
-                        e.get('HypoCenter','?'), t, name, dist,
-                        _other["name"], other_dist, e.get('Depth','?'),
-                        intensity, "CENC EEW")
-                    bark(f"🚨{tag} M{mag}", l1, l2, l3,
-                         level=level, sound=sound, group="eq",
+                    sub, l1, l2 = eq_short(name, t, dist, e.get('Depth','?'),
+                                           intensity, "CENC EEW")
+                    bark(fmt_title(name, f"{tag} M{mag}", prefix="🚨" if level == "critical" else ""),
+                         sub, l1, l2,
+                         icon="earthquake", level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
     except Exception as e: print(f"[EQ EEW ERR] {e}")
 
@@ -527,15 +621,13 @@ def check_earthquake(s):
                 if lvl:
                     level, sound, tag = lvl
                     t = str(latest.get("time",""))
-                    _src = ('烈度'+str(latest.get('intensity'))
-                            if latest.get('intensity') else 'CENC速报')
-                    l1, l2, l3 = eq_lines(
-                        latest.get('location','?'), t, name, dist,
-                        _other["name"], other_dist, latest.get('depth','?'),
-                        latest.get('intensity') if latest.get('intensity') else '?',
-                        _src)
-                    bark(f"📢{tag} M{mag}", l1, l2, l3,
-                         level=level, sound=sound, group="eq",
+                    _src = 'CENC速报'
+                    sub, l1, l2 = eq_short(name, t, dist, latest.get('depth','?'),
+                                           latest.get('intensity') if latest.get('intensity') else '?',
+                                               _src)
+                    bark(fmt_title(name, f"{tag} M{mag}", prefix="🚨" if level == "critical" else ""),
+                         sub, l1, l2,
+                         icon="earthquake", level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
     except Exception as e: print(f"[EQ LIST ERR] {e}")
 
@@ -548,12 +640,12 @@ def check_earthquake(s):
         if is_warn and info != last:
             s["last_tsunami_info"] = info
             # 触发条件不变: 只有 JMA 文本里含警报/注意报/预报字样才推, 仍为 critical
-            bark("🌊海啸预警",
-                 f"日本气象厅发布 · {latest.get('location','?')}",
-                 f"M{latest.get('magnitude','?')} · 震度{latest.get('shindo','?')}",
-                 f"{info[:24]}",
-                 level="critical", sound="alarm", group="tsunami",
-                 url="https://www.jma.go.jp/jma/index.html")
+            bark(fmt_title("海啸", "海啸预警", prefix="🚨"),
+                _txt(latest.get('location','?')),
+                    f"M{_txt(latest.get('magnitude','?'))}, 震度{_txt(latest.get('shindo','?'))}, {_txt(info)}",
+                        "来源: 日本气象厅",
+                            icon="tsunami", level="critical", sound="alarm", group="tsunami",
+                                url="https://www.jma.go.jp/jma/index.html")
         elif info:
             s["last_tsunami_info"] = info
     except Exception as e: print(f"[TSUNAMI ERR] {e}")
@@ -590,13 +682,12 @@ def check_earthquake(s):
                     t / 1000, tz=datetime.timezone.utc).strftime("%m-%d %H:%M UTC")
             except Exception:
                 hh = "?"
-            l1, l2, l3 = eq_lines(
-                str(p.get('place','?')), hh, name, dmin,
-                _other["name"], other_dist,
-                coords[2] if len(coords) >= 3 else '?',
-                '?', "USGS")
-            bark(f"📡{tag} M{mag}", l1, l2, l3,
-                 level=level, sound=sound, group="eq",
+            sub, l1, l2 = eq_short(name, hh, dmin,
+                                           coords[2] if len(coords) >= 3 else '?',
+                                               '?', "USGS")
+            bark(fmt_title(name, f"{tag} M{mag}", prefix="🚨" if level == "critical" else ""),
+                 sub, l1, l2,
+                 icon="earthquake", level=level, sound=sound, group="eq",
                  url="https://earthquake.usgs.gov/")
             s["last_usgs"] = fid
             break  # 每轮只推最新一条
@@ -634,12 +725,12 @@ def check_watchdog(s):
     print(f"[WATCHDOG] stale {wd['stale_checks']} 次, 上次成功 {last_ok or '无'} ({age_min:.0f}分钟前)")
     if wd["stale_checks"] >= 2 and now_ts - float(wd.get("last_alert", 0)) > 3600:
         wd["last_alert"] = now_ts
-        bark("⚠️预警系统存活异常",
-             f"上次成功 {last_ok[5:16].replace('T', ' ') if len(last_ok) >= 16 else (last_ok or '无')}",
-             f"已 {age_min:.0f} 分钟无成功运行 · {hb.get('mode', '?')}",
-             "可能是调用方停了/GitHub故障 · 请检查",
-             level="timeSensitive", group="sys",
-             url="https://github.com/qq2641205717-tech/bark-alert/actions")
+        bark(fmt_title("系统", "预警系统存活异常", prefix="⚠️"),
+            f"{(now + datetime.timedelta(hours=8)).strftime('%m-%d %H:%M')}",
+                f"上次成功{fmt_iso_bj(last_ok)}, 已停{age_min:.0f}分钟",
+                    "请检查调用方",
+                        icon="system", level="timeSensitive", group="sys",
+                            url="https://github.com/qq2641205717-tech/bark-alert/actions")
 
 # ---------- 入口 ----------
 if __name__=="__main__":
