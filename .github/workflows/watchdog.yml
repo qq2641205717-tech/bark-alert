@@ -1,0 +1,42 @@
+name: 存活监控
+on:
+  workflow_dispatch:
+  # 每 5 分钟检查一次 state.json 里的 heartbeat.last_ok
+  # (earthquake/weather 每次成功跑完才写), 超 15 分钟无成功运行
+  # 且连续 2 次都 stale, 才发 1 条 timeSensitive 提醒, 1 小时内不重复
+  schedule:
+    - cron: '*/5 * * * *'
+
+concurrency:
+  group: watchdog-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 检查存活
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+        run: python alert.py watchdog
+      - name: 回写状态
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(watchdog): state $(date -u +%FT%TZ)"
+            for i in 1 2 3; do
+              git pull --rebase origin main || true
+              if git push; then break; fi
+              echo "push retry $i..."
+              sleep 2
+            done
+          fi

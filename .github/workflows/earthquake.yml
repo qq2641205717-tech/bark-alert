@@ -1,10 +1,20 @@
 name: 地震与津波监控
 on:
   workflow_dispatch:
+  # 定时兜底: GitHub schedule 最少 5 分钟, 不能替代每分钟的外部 dispatch,
+  # 只在外部调用方停了时保证每 5 分钟至少跑一次, 不至于静默停摆
+  schedule:
+    - cron: '*/5 * * * *'
+
+# 每分钟 dispatch + 5 分钟兜底可能重叠, 排队不取消, 避免 state.json 回写冲突
+concurrency:
+  group: earthquake-check
+  cancel-in-progress: false
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
@@ -15,7 +25,14 @@ jobs:
       - name: 检查地震/津波
         env:
           BARK_KEY: ${{ secrets.BARK_KEY }}
-        run: python alert.py earthquake
+        # alert.py 内部失败已按源捕获并返回 0, 这里的重试只针对
+        # 进程级失败 (如 runner/网络导致 python 非零退出)
+        run: |
+          for i in 1 2 3; do
+            python alert.py earthquake && break
+            echo "attempt $i failed, retrying in 20s..."
+            sleep 20
+          done
       - name: 回写状态
         run: |
           git config user.name "github-actions[bot]"
