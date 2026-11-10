@@ -29,5 +29,9 @@
   },
   "last_evening": "2026-11-09",
   "last_morning": "2026-11-10",
-  "last_usgs": "attne4d5"
+  "last_usgs": "attne4d5",
+  "heartbeat": {
+    "last_ok": "2026-11-10T04:03:13Z",
+    "mode": "earthquake"
+  }
 }
