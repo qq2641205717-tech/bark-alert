@@ -4,7 +4,7 @@
     "mode": "earthquake"
   },
   "watchdog": {
-    "stale_checks": 1,
-    "last_alert": 0
+    "stale_checks": 2,
+    "last_alert": 1794340775.364719
   }
 }
