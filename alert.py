@@ -2,14 +2,19 @@
 """
 Bark 双地点在线预警
 地点: 通化东昌区 + 梧州长洲区
-推送规格: 标题 1 行 + 正文 3 行
-地震分级:
-  - 当地地震(距任一监控点<=100km) 或 强震感(M>=5 / 烈度>=5) -> critical 紧急
-  - 附近小震(距任一监控点<=300km, M>=3)                    -> timeSensitive
+推送规格: 标题 1 行 + 正文 3 行 (Bark 规格不变, 丰富内容只在 3 行里塞, 不加行)
+地震分级: 见 _eq_level, 本次改动未放宽任何阈值, 未升任何 timeSensitive 为 critical
 天气:
   - 每30分钟: 温度突变>=5°C / 降水概率突变 <30->60%
   - 早上7点:  各地点当天天气
   - 傍晚18点: 各地点今夜到明早
+可靠性 (本次新增):
+  - http_get_json / bark() 均带重试 (外部请求 3 次, Bark 推送每发 2 次),
+    失败只打日志, 不让单个源拖垮整轮
+  - 每次成功跑完写 heartbeat.last_ok (UTC), 供 watchdog 模式判断存活
+  - watchdog 模式: state 超 15 分钟无成功运行才记一次 stale,
+    连续 2 次 stale 且距上次提醒 >1 小时才发一条 timeSensitive 提醒,
+    绝不用 critical, 避免单次排队延迟造成误报
 """
 import os, sys, json, math, time, urllib.request, datetime
 
@@ -46,32 +51,86 @@ def save_state(s):
         json.dump(s, f, ensure_ascii=False, indent=2)
     os.replace(tmp, STATE_FILE)
 
-def http_get_json(url, timeout=12):
-    req = urllib.request.Request(url, headers={"User-Agent":"bark-alert/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+def http_get_json(url, timeout=12, retries=3, headers=None):
+    """外部请求带重试: 3 次, 间隔 2s / 5s, 3 次都失败才抛, 调用方按源分别捕获."""
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(
+                url, headers=headers or {"User-Agent": "bark-alert/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except Exception as e:
+            last_exc = e
+            print(f"[HTTP] attempt {attempt}/{retries} failed {url[:80]}: {e}")
+            if attempt < retries:
+                time.sleep(2 if attempt == 1 else 5)
+    raise last_exc
 
 def bark(title, l1, l2, l3, level="timeSensitive", sound=None, group="wx", url=None):
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
-    # critical 级别: 连推3声
+    # critical 级别: 连推3声 (原有行为不变)
     if level == "critical":
         times = 3
     else:
         times = 1
-    payload = {"title":title, "body":f"{l1}\n{l2}\n{l3}", "level":level, "group":group}
+    payload = {"title": title, "body": f"{l1}\n{l2}\n{l3}", "level": level, "group": group}
     if sound: payload["sound"] = sound
     if url:   payload["url"] = url
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     for n in range(times):
-        req = urllib.request.Request(
-            f"https://api.day.app/{BARK_KEY}", data=data,
-            headers={"Content-Type":"application/json"}, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=12) as r:
-                print(f"[BARK] {title} ({n+1}/{times}) -> {json.loads(r.read())}")
-        except Exception as e:
-            print(f"[BARK ERROR] {e}")
+        # 每发一次最多试 2 遍, 避免一次网络抖动就丢一条提醒; 不补发已成功的遍
+        sent = False
+        for attempt in range(1, 3):
+            try:
+                req = urllib.request.Request(
+                    f"https://api.day.app/{BARK_KEY}", data=data,
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=12) as r:
+                    print(f"[BARK] {title} ({n+1}/{times}) -> {json.loads(r.read())}")
+                sent = True
+                break
+            except Exception as e:
+                print(f"[BARK ERROR] {title} ({n+1}/{times}) attempt {attempt}: {e}")
+                if attempt < 2:
+                    time.sleep(2)
+        if not sent:
+            print(f"[BARK FAIL] {title} ({n+1}/{times}) 2 次都未发出, 丢弃不补发")
+
+def fmt_time(t):
+    """把 '2026-11-10 02:15:00' / ISO 时间统一成 '11-10 02:15', 解析失败原样返回."""
+    s = str(t or "").strip()
+    if len(s) >= 16 and s[4:5] == "-" and s[7:8] == "-":
+        return s[5:16].replace("T", " ")
+    return s
+
+def fmt_bj_now():
+    return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
+
+def eq_lines(place, time_str, nearest_name, dist, other_name, other_dist,
+             depth, intensity, source):
+    """地震 3 行文案 (标题已带震级和分级, 这里只补其余字段, 不编数):
+    L1 地点 · 发震时间 / L2 距最近点距离 · 深度 · 烈度 / L3 距另一地点距离 · 来源.
+    depth/intensity 为 '?' 时原样写 '?', 不猜."""
+    return (
+        f"{str(place)[:24]} · {fmt_time(time_str)}",
+        f"距{nearest_name} {dist:.0f}km · 深{depth}km · 烈度{intensity}",
+        f"距{other_name} {other_dist:.0f}km · {source}",
+    )
+
+def other_loc(nearest_name):
+    """返回另一个监控点的名字和到它的距离计算用地点, 供 eq_lines 用."""
+    for loc in LOCATIONS:
+        if loc["name"] != nearest_name:
+            return loc
+    return LOCATIONS[0]
+
+def aqi_text(aqi, pm25):
+    """AQI/PM2.5 一行后缀, 拿不到就返回空串, 不编数."""
+    if aqi is None:
+        return ""
+    return f"AQI {aqi} · PM2.5 {pm25}"
 
 def hav(la1, lo1, la2, lo2):
     R=6371.0
@@ -117,7 +176,7 @@ def check_weather(s):
         if k not in valid_names:
             wx.pop(k, None)
     # --- 早晚报: 按北京时间窗口判断, 每天只发一次 ---
-    bj_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
+    bj_now = fmt_bj_now()
     bj_date = bj_now.strftime("%Y-%m-%d")
     bj_hour = bj_now.hour
     last_morning = s.get("last_morning", "")
@@ -132,22 +191,36 @@ def check_weather(s):
         s["last_evening"] = bj_date
     for loc in LOCATIONS:
         name = loc["name"]
+        temp = None; wind = "?"; code = 0; apparent = "?"; humidity = "?"
+        # AQI 先取一次, 供本轮天气文案复用 (取不到为 None, 文案里不编数);
+        # 去重逻辑仍在后面的 AQI 段, 只用这里取到的值, 不重复请求
+        cur_aqi, cur_pm25 = None, None
+        try:
+            _aq = fetch_aqi(loc)
+            cur_aqi = int(_aq["current"]["us_aqi"])
+            cur_pm25 = _aq["current"].get("pm2_5", "?")
+        except Exception as e:
+            print(f"[AQI {name} PREFETCH ERR] {e}")
         try:
             d = fetch_wx(loc); cur = d["current"]
             temp = cur["temperature_2m"]; code = int(cur.get("weather_code",0))
             wind = cur.get("wind_speed_10m","?")
+            apparent = cur.get("apparent_temperature", "?")
+            humidity = cur.get("relative_humidity_2m", "?")
             st = wx.setdefault(name, {"last_temp":None, "last_rain_prob":0, "last_aqi":None})
             lt = st.get("last_temp")
             if lt is not None and abs(temp-lt) >= 5:
                 diff = temp-lt; arrow = "升温" if diff>0 else "降温"
                 bark(f"{name} 🌡️{arrow}{abs(diff):.1f}°C",
-                     f"现在{temp}° {wmo(code)}",
-                     f"上次{lt}°",
-                     "注意增减衣物",
+                     f"现在{temp}° 体感{apparent}° {wmo(code)}",
+                     f"上次{lt}° · 风{wind}km/h · 湿度{humidity}%",
+                     f"{aqi_text(cur_aqi, cur_pm25) + ' · ' if cur_aqi is not None else ''}注意增减衣物",
                      level="timeSensitive", group="wx")
             h = d["hourly"]; times=h["time"]; probs=h["precipitation_probability"]
             now = cur["time"]; idx = next((i for i,t in enumerate(times) if t>=now), 0)
             nxt = max((int(probs[j] or 0) for j in range(idx, min(idx+4, len(probs)))), default=0)
+            _t3 = [float(x) for x in h.get("temperature_2m", [])[idx:idx+4]]
+            t3_txt = f"{min(_t3):.0f}~{max(_t3):.0f}°" if _t3 else "?"
             st["last_temp"] = temp; st["last_rain_prob"] = nxt
 
             # --- 雨/雪变化检测(基于降水概率状态机, 防抖动) ---
@@ -174,25 +247,25 @@ def check_weather(s):
             # 开始下雨/雪
             elif new_st == 1 and old_st == 0 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
                 bark(f"{name} 🌧️开始{pt or '降雨'}",
-                     f"未来3小时降水{nxt}%",
-                     f"现在{wmo(code)} {temp}°",
-                     f"出门记得带{pt=='雪' and '防滑' or '伞'}",
+                     f"未来3小时降水{nxt}% · {t3_txt}",
+                     f"现在{wmo(code)} {temp}° 体感{apparent}°",
+                     f"出门记得带{pt=='雪' and '防滑' or '伞'} · 风{wind}km/h",
                      level="timeSensitive", sound="rain", group="wx")
                 st["last_rain_state"] = 1; st["last_rain_change"] = now_ts
             # 雨/雪停了
             elif new_st == 0 and old_st == 1 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
                 bark(f"{name} 🌤️{pt or '降雨'}趋停",
-                     f"未来3小时降水{nxt}%",
-                     f"现在{wmo(code)} {temp}°",
-                     f"{pt or '雨'}渐止放晴",
+                     f"未来3小时降水{nxt}% · {t3_txt}",
+                     f"现在{wmo(code)} {temp}° 体感{apparent}°",
+                     f"{pt or '雨'}渐止放晴 · 风{wind}km/h",
                      level="timeSensitive", group="wx")
                 st["last_rain_state"] = 0; st["last_rain_change"] = now_ts
             # 雨越下越大: 降水概率比上次涨>=30且已在下雨
             elif new_st == 1 and old_st == 1 and nxt - st.get("last_nxt",0) >= 30 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
                 bark(f"{name} ⛈️{pt or '雨'}越下越大",
-                     f"未来3小时降水{nxt}%",
-                     f"现在{wmo(code)} {temp}°",
-                     f"注意防范",
+                     f"未来3小时降水{nxt}% · {t3_txt}",
+                     f"现在{wmo(code)} {temp}° 体感{apparent}°",
+                     f"注意防范 · 风{wind}km/h",
                      level="timeSensitive", sound="rain", group="wx")
                 st["last_rain_change"] = now_ts
             if new_st is not None:
@@ -202,10 +275,13 @@ def check_weather(s):
         except Exception as e:
             print(f"[WX {name} ERR] {e}")
 
-        # AQI 变化检测
+        # AQI 变化检测 (复用本轮开头已取到的 AQI, 不再重复请求;
+        # 阈值/去重逻辑不变: 只有 tag 跨档才推)
         try:
-            aq = fetch_aqi(loc); aqi = int(aq["current"]["us_aqi"])
-            pm25 = aq["current"].get("pm2_5", "?")
+            if cur_aqi is None:
+                raise ValueError("AQI prefetch failed")
+            aqi = cur_aqi
+            pm25 = cur_pm25
             st2 = wx.get(name, st)
             la = st2.get("last_aqi")
             emoji, desc, tag = aqi_level(aqi)
@@ -213,10 +289,12 @@ def check_weather(s):
             if la is not None:
                 _, _, old_tag = aqi_level(la)
                 if tag and tag != old_tag:
+                    _wx_txt = (f"现在{temp}° {wmo(code)}"
+                               if 'temp' in locals() and temp is not None else "天气数据未取到")
                     bark(f"{name} {emoji}{desc}",
                          f"AQI {aqi} (上次{la})",
-                         f"PM2.5 {pm25}μg/m³",
-                         desc,
+                         f"PM2.5 {pm25}μg/m³ · {_wx_txt}",
+                         f"{desc} · 风{wind}km/h",
                          level="timeSensitive", group="wx")
                     print(f"[AQI] {name} {la}->{aqi} {tag}")
             st2["last_aqi"] = aqi
@@ -233,10 +311,19 @@ def morning_forecast():
             tmin = daily["temperature_2m_min"][0]
             pmax = daily["precipitation_probability_max"][0]
             wind = cur.get("wind_speed_10m","?")
+            apparent = cur.get("apparent_temperature", "?")
+            humidity = cur.get("relative_humidity_2m", "?")
+            # AQI 只做文案补充, 取不到不编数, 失败不影响早报
+            try:
+                _aq = fetch_aqi(loc)
+                _aqi = int(_aq["current"]["us_aqi"]); _pm25 = _aq["current"].get("pm2_5", "?")
+                _aqi_txt = f"AQI {_aqi} · PM2.5 {_pm25}"
+            except Exception:
+                _aqi_txt = "AQI 未取到"
             bark(f"{name} 今日天气",
-                 f"白天 {wmo(today_code)} {tmax}°",
-                 f"夜间 {tmin}°",
-                 f"降水{pmax}% 风{wind}km/h",
+                 f"白天 {wmo(today_code)} {tmax}° · 体感{apparent}°",
+                 f"夜间 {tmin}° · 降水{pmax}% · 风{wind}km/h",
+                 f"{_aqi_txt} · 湿度{humidity}%",
                  level="timeSensitive", group="wx")
         except Exception as e:
             print(f"[MORNING {name} ERR] {e}")
@@ -256,10 +343,18 @@ def evening_forecast():
             morn_temp = temps[morning_idx] if morning_idx < len(temps) else temps[-1]
             night_code = codes[idx+6] if idx+6 < len(codes) else codes[idx]
             max_rain = max((int(probs[j] or 0) for j in range(idx, min(idx+15,len(probs)))), default=0)
+            morn_code = codes[morning_idx] if morning_idx < len(codes) else night_code
+            wind = d["current"].get("wind_speed_10m", "?")
+            try:
+                _aq = fetch_aqi(loc)
+                _aqi = int(_aq["current"]["us_aqi"]); _pm25 = _aq["current"].get("pm2_5", "?")
+                _aqi_txt = f"AQI {_aqi} · PM2.5 {_pm25}"
+            except Exception:
+                _aqi_txt = "AQI 未取到"
             bark(f"{name} 今夜到明早",
-                 f"夜间 {wmo(night_code)} 最低{night_low:.0f}°",
-                 f"明早 {morn_temp:.0f}°",
-                 f"降水{max_rain}%",
+                 f"夜间 {wmo(night_code)} 最低{night_low:.0f}° · 降水{max_rain}%",
+                 f"明早 {wmo(morn_code)} {morn_temp:.0f}° · 风{wind}km/h",
+                 f"{_aqi_txt}",
                  level="timeSensitive", group="wx")
         except Exception as e:
             print(f"[EVENING {name} ERR] {e}")
@@ -273,10 +368,10 @@ def check_nmc_alerts(s):
     - 预警解除后自动清除, 再发会重推
     """
     try:
-        url = "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=80&signaltype=&signallevel=&province="
-        req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=12) as r:
-            d = json.loads(r.read().decode("utf-8"))
+        # 走带重试的 http_get_json (3 次), 不再裸 urlopen 一次失败就丢整轮
+        d = http_get_json(
+            "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=80&signaltype=&signallevel=&province=",
+            headers={"User-Agent": "Mozilla/5.0"})
         alerts = d.get("data",{}).get("page",{}).get("list",[])
         print(f"[NMC] 全国预警{len(alerts)}条, 匹配通化/梧州")
 
@@ -331,15 +426,15 @@ def check_nmc_alerts(s):
 
             if need_push:
                 matched, wtype, color = key.split("|")
-                # 天气预警全部只通知, 不响铃
+                # 天气预警全部只通知, 不响铃 (级别不变)
                 level = "timeSensitive"
                 sound = None
                 ns = len(info["stations"])
                 station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
                 tag = "持续中" if reason == "持续提醒" else "新预警"
                 bark(f"⚠️{matched} {color}色{wtype}预警",
-                     f"{station_txt}",
-                     f"发布 {info['time'][5:16].replace('/','-')}",
+                     f"{station_txt} · 共{ns}站发布",
+                     f"发布 {info['time'][5:16].replace('/','-')} · {color}色{wtype}",
                      f"{tag} · 中央气象台",
                      level=level, sound=sound, group="alert",
                      url="http://www.nmc.cn/publish/alarm.html")
@@ -399,15 +494,18 @@ def check_earthquake(s):
                 mag=float(e.get("Magnitude") or 0)
                 elat=float(e.get("Latitude") or 0); elon=float(e.get("Longitude") or 0)
                 name, dist = nearest_loc(elat, elon)
+                _other = other_loc(name)
+                other_dist = hav(_other["lat"], _other["lon"], elat, elon)
                 intensity = float(e.get("MaxIntensity") or 0)
                 lvl = _eq_level(mag, intensity, dist)
                 if lvl:
                     level, sound, tag = lvl
                     t = str(e.get("OriginTime",""))
-                    bark(f"🚨{tag} M{mag}",
-                         f"{e.get('HypoCenter','?')} {t[5:16] if len(t)>=16 else t}",
-                         f"距{name} {dist:.0f}km 深{e.get('Depth','?')}km",
-                         f"烈度{intensity} · CENC EEW",
+                    l1, l2, l3 = eq_lines(
+                        e.get('HypoCenter','?'), t, name, dist,
+                        _other["name"], other_dist, e.get('Depth','?'),
+                        intensity, "CENC EEW")
+                    bark(f"🚨{tag} M{mag}", l1, l2, l3,
                          level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
     except Exception as e: print(f"[EQ EEW ERR] {e}")
@@ -422,15 +520,21 @@ def check_earthquake(s):
                 mag=float(latest.get("magnitude") or 0)
                 elat=float(latest.get("latitude") or 0); elon=float(latest.get("longitude") or 0)
                 name, dist = nearest_loc(elat, elon)
+                _other = other_loc(name)
+                other_dist = hav(_other["lat"], _other["lon"], elat, elon)
                 intensity = float(latest.get("intensity") or 0)
                 lvl = _eq_level(mag, intensity, dist)
                 if lvl:
                     level, sound, tag = lvl
                     t = str(latest.get("time",""))
-                    bark(f"📢{tag} M{mag}",
-                         f"{latest.get('location','?')} {t[5:16] if len(t)>=16 else t}",
-                         f"距{name} {dist:.0f}km 深{latest.get('depth','?')}km",
-                         f"{'烈度'+str(latest.get('intensity')) if latest.get('intensity') else 'CENC速报'}",
+                    _src = ('烈度'+str(latest.get('intensity'))
+                            if latest.get('intensity') else 'CENC速报')
+                    l1, l2, l3 = eq_lines(
+                        latest.get('location','?'), t, name, dist,
+                        _other["name"], other_dist, latest.get('depth','?'),
+                        latest.get('intensity') if latest.get('intensity') else '?',
+                        _src)
+                    bark(f"📢{tag} M{mag}", l1, l2, l3,
                          level=level, sound=sound, group="eq",
                          url="https://news.ceic.ac.cn/")
     except Exception as e: print(f"[EQ LIST ERR] {e}")
@@ -443,10 +547,11 @@ def check_earthquake(s):
                                 or "津波注意報" in info or "津波予報" in info))
         if is_warn and info != last:
             s["last_tsunami_info"] = info
+            # 触发条件不变: 只有 JMA 文本里含警报/注意报/预报字样才推, 仍为 critical
             bark("🌊海啸预警",
-                 "日本气象厅发布",
-                 f"{latest.get('location','?')}",
-                 f"M{latest.get('magnitude','?')} 震度{latest.get('shindo','?')}",
+                 f"日本气象厅发布 · {latest.get('location','?')}",
+                 f"M{latest.get('magnitude','?')} · 震度{latest.get('shindo','?')}",
+                 f"{info[:24]}",
                  level="critical", sound="alarm", group="tsunami",
                  url="https://www.jma.go.jp/jma/index.html")
         elif info:
@@ -476,27 +581,83 @@ def check_earthquake(s):
                 continue
             level, sound, tag = lvl
             name, dmin = nearest_loc(elat, elon)
+            _other = other_loc(name)
+            other_dist = hav(_other["lat"], _other["lon"], elat, elon)
             t = p.get("time") or 0
-            hh = f"{int(t//3600%24):02d}:{int(t//60%60):02d}"
-            bark(f"📡{tag} M{mag}",
-                 f"距{name} {dmin:.0f}km",
-                 f"{str(p.get('place','?'))[:24]}",
-                 f"USGS {hh}Z",
+            # 原代码把毫秒时间戳当秒算 UTC 小时, 是错的; 改为毫秒转 UTC 日期时间
+            try:
+                hh = datetime.datetime.fromtimestamp(
+                    t / 1000, tz=datetime.timezone.utc).strftime("%m-%d %H:%M UTC")
+            except Exception:
+                hh = "?"
+            l1, l2, l3 = eq_lines(
+                str(p.get('place','?')), hh, name, dmin,
+                _other["name"], other_dist,
+                coords[2] if len(coords) >= 3 else '?',
+                '?', "USGS")
+            bark(f"📡{tag} M{mag}", l1, l2, l3,
                  level=level, sound=sound, group="eq",
                  url="https://earthquake.usgs.gov/")
             s["last_usgs"] = fid
             break  # 每轮只推最新一条
     except Exception as e: print(f"[USGS ERR] {e}")
 
+# ---------- 存活/心跳 ----------
+def check_watchdog(s):
+    """存活检查, 由 watchdog workflow 每 5 分钟跑一次.
+    判断依据: state.json 里 heartbeat.last_ok (每次 earthquake/weather 成功跑完才写).
+    防误报:
+      - 年龄 <=15 分钟: 正常, stale 计数清零, 不推
+      - 年龄 >15 分钟: 只记一次 stale, 不立刻推
+      - 连续 2 次 stale 且距上次提醒 >1 小时: 才发 1 条 timeSensitive,
+        绝不用 critical; 之后 1 小时内不再重复提醒
+    watchdog 本身也可能因 GitHub 故障跑不起来, 所以它只能发现"调用方停了 /
+    状态回写断了"这类静默停摆, 不能替代 GitHub 状态页.
+    """
+    hb = s.get("heartbeat", {}) or {}
+    last_ok = hb.get("last_ok", "")
+    now = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        last_dt = datetime.datetime.fromisoformat(last_ok.replace("Z", "+00:00"))
+        age_min = (now - last_dt).total_seconds() / 60
+    except Exception:
+        age_min = 9999  # 从没有成功过: 按 stale 处理, 但仍要过 2 次确认
+        last_dt = None
+    wd = s.setdefault("watchdog", {"stale_checks": 0, "last_alert": 0})
+    now_ts = now.timestamp()
+    if age_min <= 15:
+        if wd.get("stale_checks"):
+            print(f"[WATCHDOG] 恢复正常, 上次成功 {last_ok} ({age_min:.1f}分钟前)")
+        wd["stale_checks"] = 0
+        return
+    wd["stale_checks"] = int(wd.get("stale_checks", 0)) + 1
+    print(f"[WATCHDOG] stale {wd['stale_checks']} 次, 上次成功 {last_ok or '无'} ({age_min:.0f}分钟前)")
+    if wd["stale_checks"] >= 2 and now_ts - float(wd.get("last_alert", 0)) > 3600:
+        wd["last_alert"] = now_ts
+        bark("⚠️预警系统存活异常",
+             f"上次成功 {last_ok[5:16].replace('T', ' ') if len(last_ok) >= 16 else (last_ok or '无')}",
+             f"已 {age_min:.0f} 分钟无成功运行 · {hb.get('mode', '?')}",
+             "可能是调用方停了/GitHub故障 · 请检查",
+             level="timeSensitive", group="sys",
+             url="https://github.com/qq2641205717-tech/bark-alert/actions")
+
 # ---------- 入口 ----------
 if __name__=="__main__":
     mode=sys.argv[1] if len(sys.argv)>1 else "all"
     s=load_state()
-    if mode in ("earthquake","all"): check_earthquake(s)
-    if mode in ("weather","all"):
-        check_weather(s)
-        check_nmc_alerts(s)
-    if mode=="morning":  morning_forecast()
-    if mode=="evening":   evening_forecast()
+    if mode == "watchdog":
+        check_watchdog(s)
+    else:
+        if mode in ("earthquake","all"): check_earthquake(s)
+        if mode in ("weather","all"):
+            check_weather(s)
+            check_nmc_alerts(s)
+        if mode=="morning":  morning_forecast()
+        if mode=="evening":   evening_forecast()
+        # 每次成功跑完 (各源内部失败已分别捕获, 不影响整轮) 写心跳, 供 watchdog 用
+        s["heartbeat"] = {
+            "last_ok": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "mode": mode,
+        }
     save_state(s)
     print(f"[OK] {mode} @ {datetime.datetime.now()}")
