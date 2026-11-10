@@ -1,12 +1,14 @@
 name: 存活监控
 on:
   workflow_dispatch:
-  # 每 5 分钟检查一次 state.json 里的 heartbeat.last_ok
-  # (earthquake/weather 每次成功跑完才写), 超 15 分钟无成功运行
-  # 且连续 2 次都 stale, 才发 1 条 timeSensitive 提醒, 1 小时内不重复
+  # 每 5 分钟检查一次心跳 (earthquake/weather 每次成功跑完才写),
+  # 超 15 分钟无成功运行且连续 2 次都 stale, 才发 1 条 timeSensitive 提醒,
+  # 1 小时内不重复, 绝不用 critical
   schedule:
     - cron: '*/5 * * * *'
 
+# watchdog 只写 wd_state.json, 不碰 wx/eq 的文件, 所以和其他 workflow
+# 并发回写时 rebase 不再冲突 (见 alert.py 状态分流)。
 concurrency:
   group: watchdog-check
   cancel-in-progress: false
@@ -25,18 +27,36 @@ jobs:
       - name: 检查存活
         env:
           BARK_KEY: ${{ secrets.BARK_KEY }}
-        run: python alert.py watchdog
-      - name: 回写状态
+          STATE_FILE: wd_state.json
         run: |
+          set -euo pipefail
+          python alert.py watchdog
+      - name: 回写状态
+        # 回写失败必须让这一步变红, 绝不能吞掉 (见 weather.yml 注释,
+        # 2026-11-10 晚报刷屏的教训)。只写 wd_state.json 一个文件;
+        # rebase 用 fetch + rebase origin/main, 3 次都推不上去就 exit 1。
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state.json
-          if ! git diff --staged --quiet; then
-            git commit -m "chore(watchdog): state $(date -u +%FT%TZ)"
-            for i in 1 2 3; do
-              git pull --rebase origin main || true
-              if git push; then break; fi
-              echo "push retry $i..."
-              sleep 2
-            done
+          git add wd_state.json
+          if git diff --staged --quiet; then
+            echo "no state change, nothing to push"
+            exit 0
+          fi
+          git commit -m "chore(watchdog): state $(date -u +%FT%TZ)"
+          pushed=0
+          for i in 1 2 3; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "write-back attempt $i failed, aborting rebase and retrying..."
+            if git rebase --abort; then echo "rebase aborted"; fi
+            sleep 2
+          done
+          if [ "$pushed" -ne 1 ]; then
+            echo "ERROR: wd_state.json write-back failed after 3 attempts"
+            exit 1
           fi

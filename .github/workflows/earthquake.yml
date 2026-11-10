@@ -6,7 +6,10 @@ on:
   schedule:
     - cron: '*/5 * * * *'
 
-# 每分钟 dispatch + 5 分钟兜底可能重叠, 排队不取消, 避免 state.json 回写冲突
+# 同一个 workflow 的多次运行排队不取消, 避免自己跟自己抢写 eq_state.json。
+# 不同 workflow 之间不再抢同一个文件: 地震只写 eq_state.json,
+# 天气只写 wx_state.json, watchdog 只写 wd_state.json (见 alert.py 状态分流),
+# 所以跨 workflow 并发回写时 rebase 不再冲突。
 concurrency:
   group: earthquake-check
   cancel-in-progress: false
@@ -25,25 +28,45 @@ jobs:
       - name: 检查地震/津波
         env:
           BARK_KEY: ${{ secrets.BARK_KEY }}
-        # alert.py 内部失败已按源捕获并返回 0, 这里的重试只针对
-        # 进程级失败 (如 runner/网络导致 python 非零退出)
+          STATE_FILE: eq_state.json
         run: |
+          set -euo pipefail
+          ok=0
           for i in 1 2 3; do
-            python alert.py earthquake && break
+            if python alert.py earthquake; then ok=1; break; fi
             echo "attempt $i failed, retrying in 20s..."
             sleep 20
           done
+          if [ "$ok" -ne 1 ]; then
+            echo "ERROR: alert.py earthquake failed 3 times, failing the run on purpose"
+            exit 1
+          fi
       - name: 回写状态
+        # 回写失败必须让这一步变红, 绝不能吞掉 (见 weather.yml 注释,
+        # 2026-11-10 晚报刷屏的教训)。只写 eq_state.json 一个文件;
+        # rebase 用 fetch + rebase origin/main, 3 次都推不上去就 exit 1。
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state.json
-          if ! git diff --staged --quiet; then
-            git commit -m "chore(eq): state $(date -u +%FT%TZ)"
-            for i in 1 2 3; do
-              git pull --rebase origin main || true
-              if git push; then break; fi
-              echo "push retry $i..."
-              sleep 2
-            done
+          git add eq_state.json
+          if git diff --staged --quiet; then
+            echo "no state change, nothing to push"
+            exit 0
+          fi
+          git commit -m "chore(eq): state $(date -u +%FT%TZ)"
+          pushed=0
+          for i in 1 2 3; do
+            git fetch origin main
+            if git rebase origin/main && git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "write-back attempt $i failed, aborting rebase and retrying..."
+            if git rebase --abort; then echo "rebase aborted"; fi
+            sleep 2
+          done
+          if [ "$pushed" -ne 1 ]; then
+            echo "ERROR: eq_state.json write-back failed after 3 attempts"
+            exit 1
           fi
