@@ -8,8 +8,10 @@ on:
 
 # 同一个 workflow 的多次运行排队不取消, 避免自己跟自己抢写 eq_state.json。
 # 不同 workflow 之间不再抢同一个文件: 地震只写 eq_state.json,
-# 天气只写 wx_state.json, watchdog 只写 wd_state.json (见 alert.py 状态分流),
-# 所以跨 workflow 并发回写时 rebase 不再冲突。
+# 天气只写 wx_state.json, watchdog 只写 wd_state.json (见 alert.py 状态分流)。
+# 但重叠运行仍会让 rebase 冲突 (2026-11-12 凌晨 05:52–06:53 地震连着失败,
+# 日志就是 rebase 冲突), 所以回写改成跟天气 / watchdog 一样的 reset+重放,
+# 不用 rebase。
 concurrency:
   group: earthquake-check
   cancel-in-progress: false
@@ -44,26 +46,42 @@ jobs:
       - name: 回写状态
         # 回写失败必须让这一步变红, 绝不能吞掉 (见 weather.yml 注释,
         # 2026-11-10 晚报刷屏的教训)。只写 eq_state.json 一个文件;
-        # rebase 用 fetch + rebase origin/main, 3 次都推不上去就 exit 1。
+        # 不用 rebase: 2026-11-12 凌晨 05:52–06:53 地震连续失败,
+        # 日志就是 rebase 冲突 (CONFLICT in eq_state.json), concurrency
+        # 分组没防住重叠运行 (状态文件每次整文件重写, 心跳那几行每次都改,
+        # 只要另一趟运行在本趟 checkout 之后 push 过, rebase 就一定冲突)。
+        # 改成跟 weather.yml / watchdog.yml 一样的办法: fetch 后 reset
+        # --hard 到最新 main, 再把本次算好的状态重新放回去提交推送:
+        # 状态是每次整份重算的, 日期标记幂等、心跳只会更新, 覆盖写
+        # 是安全的; 3 次都推不上去就 exit 1, 宁可让运行变红, 也不
+        # 让它假装成功。
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add eq_state.json
-          if git diff --staged --quiet; then
+          if git diff --quiet -- eq_state.json; then
             echo "no state change, nothing to push"
             exit 0
           fi
-          git commit -m "chore(eq): state $(date -u +%FT%TZ)"
+          # 先把本次算好的状态存到 /tmp, 下面的 reset 会清掉工作区
+          cp eq_state.json /tmp/eq_state.new.json
           pushed=0
           for i in 1 2 3; do
             git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then
+            git reset --hard origin/main
+            cp /tmp/eq_state.new.json eq_state.json
+            git add eq_state.json
+            if git diff --staged --quiet; then
+              echo "state already up to date on main, nothing to push"
               pushed=1
               break
             fi
-            echo "write-back attempt $i failed, aborting rebase and retrying..."
-            if git rebase --abort; then echo "rebase aborted"; fi
+            git commit -m "chore(eq): state $(date -u +%FT%TZ)"
+            if git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "write-back attempt $i failed, retrying..."
             sleep 2
           done
           if [ "$pushed" -ne 1 ]; then
