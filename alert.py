@@ -85,11 +85,15 @@ _MODE_STATE_FILE = {
     "earthquake": "eq_state.json", "watchdog": "wd_state.json",
 }
 
-def state_file_for(mode):
+def state_file_for(mode, ignore_env=False):
     """该模式的状态文件. 显式设置了 STATE_FILE 环境变量时优先用它
-    (workflow 里也会显式传, 双保险); 否则按模式分流; 未知模式用旧 state.json."""
+    (workflow 里也会显式传, 双保险); 否则按模式分流; 未知模式用旧 state.json.
+    ignore_env=True 时不看环境变量, 直接按模式分流: load_watchdog_state()
+    要读天气/地震两个文件的心跳, 在 watchdog workflow 里 STATE_FILE 环境变量
+    是 wd_state.json, 不忽略它就会把自己读三遍, 永远看不到对方的心跳
+    (2026-11-11 检修发现 wd_state.json 心跳停在 11-10 17:42 的原因)."""
     env = os.environ.get("STATE_FILE")
-    if env:
+    if env and not ignore_env:
         return env
     base = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base, _MODE_STATE_FILE.get(mode, "state.json"))
@@ -139,7 +143,9 @@ def load_watchdog_state():
     s = load_state_for_mode("watchdog")
     candidates = [s.get("heartbeat")]
     for mode in ("weather", "earthquake"):
-        p = state_file_for(mode)
+        # 必须 ignore_env: watchdog workflow 里 STATE_FILE 环境变量是
+        # wd_state.json, 不忽略就会把自己读三遍 (2026-11-11 检修根因)
+        p = state_file_for(mode, ignore_env=True)
         if os.path.isfile(p):
             candidates.append(load_state_file(p).get("heartbeat"))
     s["heartbeat"] = freshest_heartbeat(*candidates)
