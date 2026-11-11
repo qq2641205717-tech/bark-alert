@@ -1,10 +1,10 @@
 {
   "heartbeat": {
-    "last_ok": "2026-11-10T09:42:16Z",
-    "mode": "earthquake"
+    "last_ok": "2026-11-11T03:58:15Z",
+    "mode": "weather"
   },
   "watchdog": {
-    "stale_checks": 3,
+    "stale_checks": 0,
     "last_alert": 1794357338.601676
   }
 }
