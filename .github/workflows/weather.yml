@@ -45,28 +45,42 @@ jobs:
         # 回写失败必须让这一步变红, 绝不能再把失败吞掉:
         # 2026-11-10 晚报刷屏就是因为回写步骤表面绿色、实际 push 失败,
         # last_evening 推不回去, 下一分钟又以为没发过。
-        # 只写 wx_state.json 一个文件; rebase 用 fetch + rebase origin/main
-        # (不用 git pull, detached HEAD 下 pull 本来就不可靠), 3 次都
-        # 推不上去就 exit 1, 宁可让运行变红, 也不让它假装成功。
+        # 只写 wx_state.json 一个文件; 不用 rebase: 每分钟跑一次,
+        # 只要另一趟运行在本趟 checkout 之后 push 过, rebase 就一定
+        # 冲突 (状态文件每次整文件重写, 心跳那几行每次都改),
+        # 2026-11-11 09:28 / 10:03 两次失败就是这么来的 (job 排队
+        # 晚启动, checkout 的 base 已经旧了)。改成 fetch 后 reset
+        # --hard 到最新 main, 再把本次算好的状态重新放回去提交推送:
+        # 状态是每次整份重算的, 日期标记幂等、心跳只会更新, 覆盖写
+        # 是安全的; 3 次都推不上去就 exit 1, 宁可让运行变红, 也不
+        # 让它假装成功。
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add wx_state.json
-          if git diff --staged --quiet; then
+          if git diff --quiet -- wx_state.json; then
             echo "no state change, nothing to push"
             exit 0
           fi
-          git commit -m "chore(wx): state $(date -u +%FT%TZ)"
+          # 先把本次算好的状态存到 /tmp, 下面的 reset 会清掉工作区
+          cp wx_state.json /tmp/wx_state.new.json
           pushed=0
           for i in 1 2 3; do
             git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then
+            git reset --hard origin/main
+            cp /tmp/wx_state.new.json wx_state.json
+            git add wx_state.json
+            if git diff --staged --quiet; then
+              echo "state already up to date on main, nothing to push"
               pushed=1
               break
             fi
-            echo "write-back attempt $i failed, aborting rebase and retrying..."
-            if git rebase --abort; then echo "rebase aborted"; fi
+            git commit -m "chore(wx): state $(date -u +%FT%TZ)"
+            if git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "write-back attempt $i failed, retrying..."
             sleep 2
           done
           if [ "$pushed" -ne 1 ]; then

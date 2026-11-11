@@ -34,26 +34,37 @@ jobs:
       - name: 回写状态
         # 回写失败必须让这一步变红, 绝不能吞掉 (见 weather.yml 注释,
         # 2026-11-10 晚报刷屏的教训)。只写 wd_state.json 一个文件;
-        # rebase 用 fetch + rebase origin/main, 3 次都推不上去就 exit 1。
+        # 不用 rebase (同 weather.yml: 另一趟运行在 checkout 之后
+        # push 过就会冲突, 2026-11-11 天气两次回写失败就是这么来的),
+        # 改成 fetch 后 reset --hard 到最新 main, 再把本次算好的状态
+        # 重新放回去提交推送; 3 次都推不上去就 exit 1。
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add wd_state.json
-          if git diff --staged --quiet; then
+          if git diff --quiet -- wd_state.json; then
             echo "no state change, nothing to push"
             exit 0
           fi
-          git commit -m "chore(watchdog): state $(date -u +%FT%TZ)"
+          # 先把本次算好的状态存到 /tmp, 下面的 reset 会清掉工作区
+          cp wd_state.json /tmp/wd_state.new.json
           pushed=0
           for i in 1 2 3; do
             git fetch origin main
-            if git rebase origin/main && git push origin HEAD:main; then
+            git reset --hard origin/main
+            cp /tmp/wd_state.new.json wd_state.json
+            git add wd_state.json
+            if git diff --staged --quiet; then
+              echo "state already up to date on main, nothing to push"
               pushed=1
               break
             fi
-            echo "write-back attempt $i failed, aborting rebase and retrying..."
-            if git rebase --abort; then echo "rebase aborted"; fi
+            git commit -m "chore(watchdog): state $(date -u +%FT%TZ)"
+            if git push origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            echo "write-back attempt $i failed, retrying..."
             sleep 2
           done
           if [ "$pushed" -ne 1 ]; then
