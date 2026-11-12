@@ -1,13 +1,13 @@
 {
   "nmc_pushed": {
     "通化|大风|蓝": {
-      "issuetime": "2026/11/12 10:37",
-      "last_push": 1794451524.96188
+      "issuetime": "2026/11/12 11:26",
+      "last_push": 1794454232.439119
     }
   },
   "wx": {
     "通化": {
-      "last_temp": 10.4,
+      "last_temp": 10.6,
       "last_rain_prob": 0,
       "last_aqi": 71,
       "last_wx_code": 0,
@@ -16,7 +16,7 @@
       "last_nxt": 0
     },
     "梧州": {
-      "last_temp": 22.7,
+      "last_temp": 23.0,
       "last_rain_prob": 0,
       "last_aqi": 57,
       "last_wx_code": 0,
@@ -28,7 +28,7 @@
   "last_evening": "2026-11-11",
   "last_morning": "2026-11-12",
   "heartbeat": {
-    "last_ok": "2026-11-12T03:29:15Z",
+    "last_ok": "2026-11-12T03:30:33Z",
     "mode": "weather"
   }
 }
