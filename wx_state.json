@@ -4,7 +4,7 @@
     "通化": {
       "last_temp": 2.1,
       "last_rain_prob": 0,
-      "last_aqi": 63,
+      "last_aqi": 62,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1793873723.1440039,
@@ -23,7 +23,7 @@
   "last_evening": "2026-11-12",
   "last_morning": "2026-11-12",
   "heartbeat": {
-    "last_ok": "2026-11-12T21:59:25Z",
+    "last_ok": "2026-11-12T22:00:43Z",
     "mode": "weather"
   }
 }
