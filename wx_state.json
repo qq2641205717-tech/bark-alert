@@ -2,7 +2,7 @@
   "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 3.6,
+      "last_temp": 3.4,
       "last_rain_prob": 0,
       "last_aqi": 67,
       "last_wx_code": 0,
@@ -23,7 +23,7 @@
   "last_evening": "2026-11-12",
   "last_morning": "2026-11-12",
   "heartbeat": {
-    "last_ok": "2026-11-12T13:44:18Z",
+    "last_ok": "2026-11-12T13:45:25Z",
     "mode": "weather"
   }
 }
