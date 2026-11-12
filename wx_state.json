@@ -1,8 +1,8 @@
 {
   "nmc_pushed": {
     "通化|大风|蓝": {
-      "issuetime": "2026/11/12 10:17",
-      "last_push": 1794450321.23724
+      "issuetime": "2026/11/12 10:28",
+      "last_push": 1794451227.430828
     }
   },
   "wx": {
@@ -28,7 +28,7 @@
   "last_evening": "2026-11-11",
   "last_morning": "2026-11-12",
   "heartbeat": {
-    "last_ok": "2026-11-12T02:39:18Z",
+    "last_ok": "2026-11-12T02:40:28Z",
     "mode": "weather"
   }
 }
