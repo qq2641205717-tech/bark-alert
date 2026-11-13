@@ -1,10 +1,5 @@
 {
-  "nmc_pushed": {
-    "梧州|暴雨|黄": {
-      "issuetime": "2026/11/13 19:01",
-      "last_push": 1794568225.245091
-    }
-  },
+  "nmc_pushed": {},
   "wx": {
     "通化": {
       "last_temp": 2.9,
@@ -28,7 +23,7 @@
   "last_evening": "2026-11-13",
   "last_morning": "2026-11-13",
   "heartbeat": {
-    "last_ok": "2026-11-13T12:09:27Z",
+    "last_ok": "2026-11-13T12:10:26Z",
     "mode": "weather"
   }
 }
