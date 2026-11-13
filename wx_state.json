@@ -20,10 +20,10 @@
       "last_nxt": 100
     }
   },
-  "last_evening": "2026-11-12",
+  "last_evening": "2026-11-13",
   "last_morning": "2026-11-13",
   "heartbeat": {
-    "last_ok": "2026-11-13T08:59:16Z",
+    "last_ok": "2026-11-13T09:03:34Z",
     "mode": "weather"
   }
 }
