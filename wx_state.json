@@ -2,18 +2,18 @@
   "nmc_pushed": {},
   "wx": {
     "通化": {
-      "last_temp": 3.9,
+      "last_temp": 3.6,
       "last_rain_prob": 0,
-      "last_aqi": 66,
+      "last_aqi": 67,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1793873723.1440039,
       "last_nxt": 0
     },
     "梧州": {
-      "last_temp": 21.1,
+      "last_temp": 21.0,
       "last_rain_prob": 100,
-      "last_aqi": 72,
+      "last_aqi": 74,
       "last_wx_code": 0,
       "last_rain_state": 1,
       "last_rain_change": 1794510923.5112412,
@@ -23,7 +23,7 @@
   "last_evening": "2026-11-13",
   "last_morning": "2026-11-13",
   "heartbeat": {
-    "last_ok": "2026-11-13T09:59:15Z",
+    "last_ok": "2026-11-13T10:00:39Z",
     "mode": "weather"
   }
 }
