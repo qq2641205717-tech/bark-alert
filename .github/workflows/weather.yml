@@ -23,12 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 同步最新状态
-      # checkout 拿到的是 dispatch 时的 main, 排队等前一趟跑完再启动时状态已经旧了,
-      # alert.py 会拿旧状态做去重判断, 同一条预警重复推
-      # (2026-11-14 07:23 大雾黄 07:32 推了两次)。先 fetch + reset 到最新 main 再跑。
-      run: |
-        git fetch origin main
-        git reset --hard origin/main
+        # checkout 拿到的是 dispatch 时的 main, 排队等前一趟跑完再启动时状态已经旧了,
+        # alert.py 会拿旧状态做去重判断, 同一条预警重复推
+        # (2026-11-14 07:23 大雾黄 07:32 推了两次)。先 fetch + reset 到最新 main 再跑。
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
