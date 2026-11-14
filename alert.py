@@ -562,12 +562,14 @@ def evening_forecast():
             print(f"[EVENING {name} ERR] {e}")
 
 # ---------- 中央气象台官方预警 ----------
-def check_nmc_alerts(s):
+def check_nmc_alerts(s, persist=None):
     """去重逻辑:
     - 首次运行只建基线不轰炸
     - 同key的issuetime变了(气象台新发布/更新) -> 重推
     - 持续预警每3小时再推一次提醒(防止用户遗忘)
-    - 预警解除后自动清除, 再发会重推
+    - 预警不在当次 API 列表里时保留记录, 防止 API 分页/波动导致重推;
+      解除后重发的预警靠 issuetime 变化识别
+      - 推完立刻落盘 (persist), 即使后面进程提前退出, 已发标记也不会丢
     """
     try:
         # 走带重试的 http_get_json (3 次), 不再裸 urlopen 一次失败就丢整轮
@@ -645,9 +647,16 @@ def check_nmc_alerts(s):
 
             pushed[key] = {"issuetime": info["time"],
                            "last_push": now if need_push else prev.get("last_push", now)}
+         if need_push and persist:
+          # 发完立刻落盘, 即使后面进程提前退出, 已发标记也不会丢, 下一分钟不会再发一次
+          # (跟早报/晚报/check_weather 同一个做法)
+          s["nmc_pushed"] = pushed
+          persist(s)
 
-        # 清除已解除的预警
-        s["nmc_pushed"] = {k: v for k, v in pushed.items() if k in current}
+        # 别因为某次 API 分页/波动暂时没返回就删状态, 否则下次一出现就当成新预警重推
+ # (2026-11-14 07:50 大雾黄, 07:55 推过一次, 14:10 又以"新预警"重推了一次)。
+ # 解除后重发的预警靠 issuetime 变化识别, 所以旧记录留着, 状态文件只有几个 key, 不会膨胀。
+ s["nmc_pushed"] = pushed
     except Exception as e:
         print(f"[NMC ERR] {e}")
 
@@ -871,7 +880,7 @@ if __name__=="__main__":
         if mode in ("earthquake","all"): check_earthquake(s)
         if mode in ("weather","all"):
             check_weather(s, persist=save_state)
-            check_nmc_alerts(s)
+            check_nmc_alerts(s, persist=save_state)
         # 每次成功跑完 (各源内部失败已分别捕获, 不影响整轮) 写心跳, 供 watchdog 用
         s["heartbeat"] = {
             "last_ok": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
