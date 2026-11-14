@@ -1,7 +1,7 @@
 {
   "heartbeat": {
-    "last_ok": "2026-11-14T14:29:59Z",
-    "mode": "weather"
+    "last_ok": "2026-11-14T19:26:22Z",
+    "mode": "earthquake"
   },
   "watchdog": {
     "stale_checks": 0,
