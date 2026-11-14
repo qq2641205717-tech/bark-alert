@@ -569,7 +569,7 @@ def check_nmc_alerts(s, persist=None):
     - 持续预警每3小时再推一次提醒(防止用户遗忘)
     - 预警不在当次 API 列表里时保留记录, 防止 API 分页/波动导致重推;
       解除后重发的预警靠 issuetime 变化识别
-      - 推完立刻落盘 (persist), 即使后面进程提前退出, 已发标记也不会丢
+    - 推完立刻落盘 (persist), 即使后面进程提前退出, 已发标记也不会丢
     """
     try:
         # 走带重试的 http_get_json (3 次), 不再裸 urlopen 一次失败就丢整轮
@@ -647,16 +647,16 @@ def check_nmc_alerts(s, persist=None):
 
             pushed[key] = {"issuetime": info["time"],
                            "last_push": now if need_push else prev.get("last_push", now)}
-         if need_push and persist:
-          # 发完立刻落盘, 即使后面进程提前退出, 已发标记也不会丢, 下一分钟不会再发一次
-          # (跟早报/晚报/check_weather 同一个做法)
-          s["nmc_pushed"] = pushed
-          persist(s)
+            if need_push and persist:
+                # 发完立刻落盘, 即使后面进程提前退出, 已发标记也不会丢, 下一分钟不会再发一次
+                # (跟早报/晚报/check_weather 同一个做法)
+                s["nmc_pushed"] = pushed
+                persist(s)
 
         # 别因为某次 API 分页/波动暂时没返回就删状态, 否则下次一出现就当成新预警重推
- # (2026-11-14 07:50 大雾黄, 07:55 推过一次, 14:10 又以"新预警"重推了一次)。
- # 解除后重发的预警靠 issuetime 变化识别, 所以旧记录留着, 状态文件只有几个 key, 不会膨胀。
- s["nmc_pushed"] = pushed
+        # (2026-11-14 07:50 大雾黄, 07:55 推过一次, 14:10 又以"新预警"重推了一次)。
+        # 解除后重发的预警靠 issuetime 变化识别, 所以旧记录留着, 状态文件只有几个 key, 不会膨胀。
+        s["nmc_pushed"] = pushed
     except Exception as e:
         print(f"[NMC ERR] {e}")
 
