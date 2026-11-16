@@ -584,6 +584,28 @@ def evening_forecast():
             print(f"[EVENING {name} ERR] {e}")
 
 # ---------- 中央气象台官方预警 ----------
+def match_provincial_alert(a):
+    """省级预警(如「吉林省气象台发布霾黄色预警」)标题里没有具体地名,
+    只看标题会漏掉覆盖本市的预警。拉详情页, 只看正文 alarmtext
+    那几块(不含导航链接, 避免「进入XX天气预报」误命中), 提到
+    通化/梧州才算命中。详情页拉不到就返回 None, 不硬匹配。"""
+    url = a.get("url", "")
+    if not url:
+        return None
+    try:
+        full = url if url.startswith("http") else "http://www.nmc.cn" + url
+        req = urllib.request.Request(full, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            html = r.read().decode("utf-8", "ignore")
+        blocks = re.findall(r'<div id=alarmtext>(.*?)</div>', html, re.S)
+        text = " ".join(re.sub(r"<[^>]+>", " ", b) for b in blocks)
+        for loc in LOCATIONS:
+            if any(k in text for k in loc["kw"]):
+                return loc["name"]
+    except Exception as e:
+        print(f"[NMC PROV ERR] {e}")
+    return None
+
 def check_nmc_alerts(s, persist=None):
     """去重逻辑:
     - 首次运行只建基线不轰炸
@@ -605,6 +627,10 @@ def check_nmc_alerts(s, persist=None):
         for a in alerts:
             title = a.get("title","")
             matched = next((loc["name"] for loc in LOCATIONS if any(k in title for k in loc["kw"])), None)
+            if not matched and ("省气象台" in title or "自治区气象台" in title):
+                # 省级预警标题里没有地名 (如「吉林省气象台发布霾黄色预警」),
+                # 但正文可能覆盖本市, 拉详情页核对, 别漏报
+                matched = match_provincial_alert(a)
             if not matched: continue
             # 标题格式固定为「XX气象台发布YY蓝色预警信号」，种类直接从标题提，
             # 不再维护关键词白名单（新种类如“道路冰雪”不用再手动加）。
