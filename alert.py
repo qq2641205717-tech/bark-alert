@@ -596,7 +596,7 @@ def check_nmc_alerts(s, persist=None):
     try:
         # 走带重试的 http_get_json (3 次), 不再裸 urlopen 一次失败就丢整轮
         d = http_get_json(
-            "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=80&signaltype=&signallevel=&province=",
+            "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=1000&signaltype=&signallevel=&province=",
             headers={"User-Agent": "Mozilla/5.0"})
         alerts = d.get("data",{}).get("page",{}).get("list",[])
         print(f"[NMC] 全国预警{len(alerts)}条, 匹配通化/梧州")
