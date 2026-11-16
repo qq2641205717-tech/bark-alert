@@ -19,11 +19,11 @@ jobs:
           python -c "
           import alert
           alert.bark('⚠️【通化梅河口】道路冰雪蓝色预警',
-                     '通化 11-16 16:58',
-                     '道路冰雪蓝色预警, 共6站',
-                     '涉及：梅河口、柳河县、通化县、通化市、辉南县、集安',
+                     '11-16 16:58发布',
+                     '梅河口、柳河、通化县、通化市、辉南、集安',
                      '道路可能结冰积雪，影响交通',
                      '路面湿滑，减速慢行',
+                     '共6站，新预警',
                      icon='road_snow', level='timeSensitive', group='alert',
                      url='http://www.nmc.cn/publish/alarm.html')
           print('测试通知已发送')
