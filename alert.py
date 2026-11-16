@@ -193,7 +193,7 @@ ICONS = {
     "thunder": "thunder.png", "hail": "hail.png",
     "frost": "frost.png", "fog": "fog.png",
     "haze": "haze.png", "road_ice": "road_ice.png",
-    "road_snow": "road_snow.png", "storm_wind": "storm_wind.png",
+    "road_snow": "road_snow_v2.png", "storm_wind": "storm_wind.png",
     "sea_gale": "sea_gale.png", "forest_fire": "forest_fire.png",
     "low_temp": "low_temp.png", "freezing": "freezing.png",
 }
@@ -605,28 +605,32 @@ def precise_place(station):
     return city + tail
 
 def _station_short(station):
-    """站点短名, 供正文列举涉及地点用, 如 梅河口/柳河/通化县/东昌区/吉林省."""
+    """站点短名, 供正文列举涉及地点用, 如 梅河口/柳河/通化县/东昌区/吉林省。
+    通化县/通化市保留后缀以区分, 其他区/县/县级市去后缀, 省去一行字数防折行。"""
     s = station.replace("气象台", "")
     parts = re.findall(r".+?(?:省|自治区|自治州|市|区|县)", s)
     if not parts:
         return s
     last = parts[-1]
-    if len(parts) >= 3 and last.endswith("市"):
+    if last in ("通化县", "通化市"):
+        return last
+    if last.endswith("市") or last.endswith("县"):
         return last[:-1]
     return last
 
 def _stations_line(stations):
-    """正文第 2 行: 涉及地点列举, 超长只留能放下的, 后面加 等."""
+    """正文第 1 行: 涉及地点短名列举, 不加「涉及：」前缀, 不重复标题里的预警名。
+    iOS 通知正文一行实际约 20 字, 超出会折行, 所以只留一行能放下的, 超出加 等。"""
     names = [_station_short(st) for st in stations]
-    prefix = "涉及："
-    cur, keep = len(prefix), []
+    LIMIT = 20
+    cur, keep = 0, []
     for nm in names:
         add = len(nm) + (1 if keep else 0)
-        if cur + add + (1 if len(keep) + 1 < len(names) else 0) > BODY_LINE_MAX:
+        if cur + add > LIMIT:
             break
         keep.append(nm)
         cur += add
-    line = prefix + "、".join(keep)
+    line = "、".join(keep)
     if len(keep) < len(names):
         line += "等"
     return line
@@ -807,14 +811,16 @@ def check_nmc_alerts(s, persist=None):
                 place = precise_place(info["stations"][0])
                 tag = "持续中" if reason == "持续提醒" else "新预警"
                 _pub = info['time'][5:16].replace('/','-') if len(info['time']) >= 16 else _txt(info['time'])
-                # 正文 4 行, 只写有用的: 类型+站数 / 涉及地点 / 影响 / 防御建议
+                # 正文 4 行, 只写有用的, 不重复标题/副标题已有的信息:
+                # L1 涉及地点 (短名列举) / L2 影响 / L3 防御建议 / L4 站数+状态
+                # 标题已有精确地点+预警名, 所以正文不再重复预警名; 副标题只有时间, 不重复地点
                 guide = _alarm_guide(info.get("url", ""))
-                l1 = f"{wtype}{color}色预警, 共{ns}站"
-                l2 = _stations_line(info["stations"])
-                l3 = NMC_IMPACT.get(wtype, tag)
-                l4 = guide or NMC_ADVICE.get(wtype, "请注意防范")
+                l1 = _stations_line(info["stations"])
+                l2 = NMC_IMPACT.get(wtype, tag)
+                l3 = guide or NMC_ADVICE.get(wtype, "请注意防范")
+                l4 = f"共{ns}站，{tag}"
                 bark(fmt_title(place, f"{wtype}{color}色预警", prefix="⚠️"),
-                    f"{matched} {_pub}",
+                    f"{_pub}发布",
                         l1, l2, l3, l4,
                             icon=NMC_ICON.get(wtype, "warning"), level=level, sound=sound, group="alert",
                                 url="http://www.nmc.cn/publish/alarm.html")
