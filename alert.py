@@ -185,6 +185,28 @@ ICONS = {
     "morning": "morning.png", "evening": "evening.png",
     "earthquake": "earthquake.png", "tsunami": "tsunami.png",
     "warning": "warning.png", "system": "system.png",
+    # 中央气象台预警种类图标 (2026-11-16, 每种预警一个, 180x180 PNG)
+    "typhoon": "typhoon.png", "rainstorm": "rainstorm.png",
+    "blizzard": "blizzard.png", "cold_wave": "cold_wave.png",
+    "strong_wind": "strong_wind.png", "sandstorm": "sandstorm.png",
+    "high_temp": "high_temp.png", "drought": "drought.png",
+    "thunder": "thunder.png", "hail": "hail.png",
+    "frost": "frost.png", "fog": "fog.png",
+    "haze": "haze.png", "road_ice": "road_ice.png",
+    "road_snow": "road_snow.png", "storm_wind": "storm_wind.png",
+    "sea_gale": "sea_gale.png", "forest_fire": "forest_fire.png",
+    "low_temp": "low_temp.png", "freezing": "freezing.png",
+}
+
+# 预警种类 -> 图标 key, 未列出的新种类兜底用通用 warning 图标
+NMC_ICON = {
+    "台风": "typhoon", "暴雨": "rainstorm", "暴雪": "blizzard",
+    "寒潮": "cold_wave", "大风": "strong_wind", "沙尘暴": "sandstorm",
+    "高温": "high_temp", "干旱": "drought", "雷电": "thunder",
+    "冰雹": "hail", "霜冻": "frost", "大雾": "fog",
+    "霾": "haze", "道路结冰": "road_ice", "道路冰雪": "road_snow",
+    "雷雨大风": "storm_wind", "海上大风": "sea_gale",
+    "森林火险": "forest_fire", "低温": "low_temp", "冰冻": "freezing",
 }
 
 def _clip(text, n):
@@ -642,7 +664,7 @@ def check_nmc_alerts(s, persist=None):
                     f"{matched} {_pub}",
                         f"{wtype}{color}色预警, 共{ns}站",
                             f"{tag}, 中央气象台",
-                                icon="warning", level=level, sound=sound, group="alert",
+                                icon=NMC_ICON.get(wtype, "warning"), level=level, sound=sound, group="alert",
                                     url="http://www.nmc.cn/publish/alarm.html")
                 print(f"[NMC] {key} {reason} ({ns}台站)")
 
