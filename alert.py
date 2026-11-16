@@ -2,14 +2,14 @@
 """
 Bark 双地点在线预警
 地点: 通化东昌区 + 梧州长洲区
-推送规格 (2026-11-10 苹果通知适配): 标题 1 行 + 副标题 1 行 + 正文最多 2 行
+推送规格 (2026-11-10 苹果通知适配, 2026-11-16 改为标题 1 行 + 副标题 1 行 + 正文 4 行):
  依据: Bark 官方参数页 (Finb/Bark docs/params.md): subtitle 为可选字段,
  显示在标题下方、正文上方的较小字号位置, 不传则不显示这一行; title 显示在
  通知卡片第一行, body 为通知卡片主要内容。Bark 官方未给逐字段字数上限;
  iOS 锁屏折叠态实际能看全的约标题 40-50 字符、正文 90-120 字符 (第三方实测
  口径, 非 Apple 官方数字), APNs 整条 payload 上限 4096 字节。本文件自设上限
- (留足余量, 中文按字计): 标题 <=16 字, 副标题 <=20 字, 正文每行 <=30 字、
- 合计 <=60 字, 整条通知合计 <=96 字, 超出用 … 截断。
+ (留足余量, 中文按字计): 标题 <=18 字, 副标题 <=20 字, 正文每行 <=30 字、
+ 合计 <=120 字 (最多 4 行), 整条通知合计 <=158 字, 超出用 … 截断。
  - 标题: 最短事件名, 如 温度突变; 紧急只加一个 🚨 前缀, 预警类只加
  一个 ⚠️ 前缀, 其余不加 emoji / 箭头 / 温度
  - 副标题: 时间 + 地点, 如 通化 11-10 09:00
@@ -168,7 +168,7 @@ def http_get_json(url, timeout=12, retries=3, headers=None):
     raise last_exc
 
 # 自设上限: 标题<=16字, 副标题<=20字, 正文每行<=30字、合计<=60字, 整条<=96字
-TITLE_MAX, SUBTITLE_MAX, BODY_LINE_MAX, BODY_MAX = 16, 20, 30, 60
+TITLE_MAX, SUBTITLE_MAX, BODY_LINE_MAX, BODY_MAX = 18, 20, 30, 120
 
 # 通知图标: Bark 官方 icon 字段 = 图片 URL, 替换通知里默认的 Bark 图标,
 # 图标缓存在手机上, 同一 URL 只下载一次, 首次下载超 10 秒退回默认图标,
@@ -214,10 +214,11 @@ def _clip(text, n):
     t = "" if text is None else str(text)
     return t if len(t) <= n else t[:n - 1] + "…"
 
-def bark(title, subtitle, l1, l2=None, level="timeSensitive", sound=None, group="wx", url=None, icon=None):
-    """苹果通知三段式: title 标题 / subtitle 副标题 / body 正文(1-2 行).
+def bark(title, subtitle, l1, l2=None, l3=None, l4=None, level="timeSensitive", sound=None, group="wx", url=None, icon=None):
+    """苹果通知: title 标题 1 行 / subtitle 副标题 1 行 / body 正文最多 4 行.
     subtitle 为 Bark 官方可选字段, 不传则 iOS 不显示这一行, 本文件总是传.
-    icon 为 ICONS 里的 key (如 "temp_up"), 按提醒类型选图标, 传错 key 则不发 icon."""
+    icon 为 ICONS 里的 key (如 "temp_up"), 按提醒类型选图标, 传错 key 则不发 icon.
+    正文只写有用的内容, 不写「来源: 中央气象台」这类无关紧要的凑数行."""
     if not BARK_KEY:
         print("[WARN] BARK_KEY 未设置"); return
     if level == "critical":
@@ -226,7 +227,7 @@ def bark(title, subtitle, l1, l2=None, level="timeSensitive", sound=None, group=
         times = 1
     title = _clip(title, TITLE_MAX)
     subtitle = _clip(subtitle, SUBTITLE_MAX)
-    lines = [_clip(l1, BODY_LINE_MAX)] + ([_clip(l2, BODY_LINE_MAX)] if l2 else [])
+    lines = [_clip(x, BODY_LINE_MAX) for x in (l1, l2, l3, l4) if x]
     body = "\n".join(lines)
     if len(body) > BODY_MAX:
         body = body[:BODY_MAX - 1] + "…"
@@ -584,26 +585,145 @@ def evening_forecast():
             print(f"[EVENING {name} ERR] {e}")
 
 # ---------- 中央气象台官方预警 ----------
+def precise_place(station):
+    """标题里的精确发布地: 省级写省, 市写市名, 区/县/县级市写 市+区/县名.
+    如 吉林省 / 通化 / 通化东昌区 / 通化柳河县 / 通化梅河口 / 广西 / 梧州长洲区."""
+    s = station.replace("气象台", "")
+    parts = re.findall(r".+?(?:省|自治区|自治州|市|区|县)", s)
+    if not parts:
+        return s
+    if len(parts) == 1:
+        p = parts[0]
+        return "广西" if p == "广西壮族自治区" else p
+    rest = parts[1:]
+    city = rest[0][:-1] if rest[0].endswith("市") else rest[0]
+    if len(rest) == 1:
+        return city
+    tail = "".join(rest[1:])
+    if tail.endswith("市"):
+        tail = tail[:-1]
+    return city + tail
+
+def _station_short(station):
+    """站点短名, 供正文列举涉及地点用, 如 梅河口/柳河/通化县/东昌区/吉林省."""
+    s = station.replace("气象台", "")
+    parts = re.findall(r".+?(?:省|自治区|自治州|市|区|县)", s)
+    if not parts:
+        return s
+    last = parts[-1]
+    if len(parts) >= 3 and last.endswith("市"):
+        return last[:-1]
+    return last
+
+def _stations_line(stations):
+    """正文第 2 行: 涉及地点列举, 超长只留能放下的, 后面加 等."""
+    names = [_station_short(st) for st in stations]
+    prefix = "涉及："
+    cur, keep = len(prefix), []
+    for nm in names:
+        add = len(nm) + (1 if keep else 0)
+        if cur + add + (1 if len(keep) + 1 < len(names) else 0) > BODY_LINE_MAX:
+            break
+        keep.append(nm)
+        cur += add
+    line = prefix + "、".join(keep)
+    if len(keep) < len(names):
+        line += "等"
+    return line
+
+_DETAIL_CACHE = {}
+
+def _fetch_alarm_blocks(url):
+    """拉一条预警的详情页, 返回 alarmtext 各块的纯文本列表 (已去标签),
+    拉不到返回 []。同一次运行内按 URL 缓存, 省级匹配和正文提取共用一次请求。
+    只看 alarmtext 正文块, 不含导航链接, 避免「进入XX天气预报」误命中。"""
+    if not url:
+        return []
+    full = url if url.startswith("http") else "http://www.nmc.cn" + url
+    if full in _DETAIL_CACHE:
+        return _DETAIL_CACHE[full]
+    blocks = []
+    try:
+        req = urllib.request.Request(full, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            html = r.read().decode("utf-8", "ignore")
+        raw = re.findall(r"<div id=alarmtext>(.*?)</div>", html, re.S)
+        blocks = [" ".join(re.sub(r"<[^>]+>", " ", b).split()) for b in raw]
+        blocks = [b for b in blocks if b]
+    except Exception as e:
+        print(f"[NMC DETAIL ERR] {e}")
+    _DETAIL_CACHE[full] = blocks
+    return blocks
+
+def _alarm_guide(url):
+    """详情页防御指南首条, 供通知正文最后一行用。拉不到或解析失败返回 None。
+    同一次运行内按 URL 缓存, 省级匹配和正文提取共用一次请求。"""
+    blocks = _fetch_alarm_blocks(url)
+    if len(blocks) > 1:
+        g = re.sub(r"^.*?防御指南[：:]\s*", "", blocks[1])
+        g = re.sub(r"^\s*\d+[.、]\s*", "", g)
+        guide = g.split("；")[0].split(";")[0].strip()
+        return guide or None
+    return None
+
+# 预警种类 -> 简明影响 (正文第 3 行, 官方正文太长截断后常把关键句切掉, 改用一句能看完的)
+NMC_IMPACT = {
+    "道路冰雪": "道路可能结冰积雪，影响交通",
+    "道路结冰": "道路可能结冰，影响交通",
+    "霾": "能见度较低，空气质量差",
+    "大雾": "能见度低",
+    "暴雪": "降雪量大",
+    "暴雨": "降水量大，可能积水",
+    "寒潮": "气温大幅下降",
+    "大风": "风力较大",
+    "雷电": "雷电活动频繁",
+    "冰雹": "可能出现冰雹",
+    "高温": "气温较高",
+    "台风": "台风影响，风雨较强",
+    "沙尘暴": "沙尘天气，能见度低",
+    "干旱": "降水偏少，旱情持续",
+    "霜冻": "气温偏低，可能出现霜冻",
+    "低温": "气温偏低",
+    "冰冻": "可能出现冻雨，路面湿滑",
+    "雷雨大风": "雷雨大风，风力较强",
+    "海上大风": "海上风力较大",
+    "森林火险": "火险等级高",
+}
+
+# 预警种类 -> 防御建议 (详情页拉不到时的兜底, 只写有用的行动, 不写空话)
+NMC_ADVICE = {
+    "道路冰雪": "路面湿滑，减速慢行",
+    "道路结冰": "路面湿滑，减速慢行",
+    "霾": "能见度低，驾驶小心，戴口罩",
+    "大雾": "能见度低，驾驶小心",
+    "暴雪": "降雪量大，尽量减少外出",
+    "暴雨": "降水量大，注意积水",
+    "寒潮": "大幅降温，注意保暖",
+    "大风": "风力较大，注意高空坠物",
+    "雷电": "雷电天气，避免户外活动",
+    "冰雹": "可能有冰雹，注意防护",
+    "高温": "高温天气，注意防暑",
+    "台风": "台风来临，尽量留在室内",
+    "沙尘暴": "沙尘天气，戴口罩，减少外出",
+    "干旱": "注意节约用水",
+    "霜冻": "气温偏低，注意保暖",
+    "低温": "气温偏低，注意保暖",
+    "冰冻": "路面湿滑，注意交通安全",
+    "雷雨大风": "雷雨大风，避免户外活动",
+    "海上大风": "海上风大，注意安全",
+    "森林火险": "火险等级高，严禁野外用火",
+}
+
 def match_provincial_alert(a):
     """省级预警(如「吉林省气象台发布霾黄色预警」)标题里没有具体地名,
     只看标题会漏掉覆盖本市的预警。拉详情页, 只看正文 alarmtext
     那几块(不含导航链接, 避免「进入XX天气预报」误命中), 提到
     通化/梧州才算命中。详情页拉不到就返回 None, 不硬匹配。"""
-    url = a.get("url", "")
-    if not url:
-        return None
-    try:
-        full = url if url.startswith("http") else "http://www.nmc.cn" + url
-        req = urllib.request.Request(full, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=12) as r:
-            html = r.read().decode("utf-8", "ignore")
-        blocks = re.findall(r'<div id=alarmtext>(.*?)</div>', html, re.S)
-        text = " ".join(re.sub(r"<[^>]+>", " ", b) for b in blocks)
-        for loc in LOCATIONS:
-            if any(k in text for k in loc["kw"]):
-                return loc["name"]
-    except Exception as e:
-        print(f"[NMC PROV ERR] {e}")
+    blocks = _fetch_alarm_blocks(a.get("url", ""))
+    text = " ".join(blocks)
+    for loc in LOCATIONS:
+        if any(k in text for k in loc["kw"]):
+            return loc["name"]
     return None
 
 def check_nmc_alerts(s, persist=None):
@@ -639,7 +759,7 @@ def check_nmc_alerts(s, persist=None):
             color = m.group(2) if m else "蓝"
             key = f"{matched}|{wtype}|{color}"
             station = title.split("发布")[0]
-            current.setdefault(key, {"stations":[], "time":a.get("issuetime","")})["stations"].append(station)
+            current.setdefault(key, {"stations":[], "time":a.get("issuetime",""), "url":a.get("url","")})["stations"].append(station)
 
         pushed = s.get("nmc_pushed", {})
         first_run = not pushed
@@ -683,15 +803,21 @@ def check_nmc_alerts(s, persist=None):
                 level = "timeSensitive"
                 sound = None
                 ns = len(info["stations"])
-                station_txt = info["stations"][0][:16] + (f"等{ns}地" if ns>1 else "")
+                # 标题用精确发布地 (最新那站): 省写省, 区/县写 通化+区/县
+                place = precise_place(info["stations"][0])
                 tag = "持续中" if reason == "持续提醒" else "新预警"
                 _pub = info['time'][5:16].replace('/','-') if len(info['time']) >= 16 else _txt(info['time'])
-                bark(fmt_title(matched, f"{wtype}{color}色预警", prefix="⚠️"),
+                # 正文 4 行, 只写有用的: 类型+站数 / 涉及地点 / 影响 / 防御建议
+                guide = _alarm_guide(info.get("url", ""))
+                l1 = f"{wtype}{color}色预警, 共{ns}站"
+                l2 = _stations_line(info["stations"])
+                l3 = NMC_IMPACT.get(wtype, tag)
+                l4 = guide or NMC_ADVICE.get(wtype, "请注意防范")
+                bark(fmt_title(place, f"{wtype}{color}色预警", prefix="⚠️"),
                     f"{matched} {_pub}",
-                        f"{wtype}{color}色预警, 共{ns}站",
-                            f"{tag}, 中央气象台",
-                                icon=NMC_ICON.get(wtype, "warning"), level=level, sound=sound, group="alert",
-                                    url="http://www.nmc.cn/publish/alarm.html")
+                        l1, l2, l3, l4,
+                            icon=NMC_ICON.get(wtype, "warning"), level=level, sound=sound, group="alert",
+                                url="http://www.nmc.cn/publish/alarm.html")
                 print(f"[NMC] {key} {reason} ({ns}台站)")
 
             pushed[key] = {"issuetime": info["time"],
