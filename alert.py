@@ -38,7 +38,7 @@ Bark 双地点在线预警
   - 首次分流运行时, 各模式从旧 state.json 里只迁移自己那几项
     (见 migrate_legacy_state), 旧文件留作迁移源, 不要删。
 """
-import os, sys, json, math, time, urllib.request, datetime
+import os, sys, json, math, re, time, urllib.request, datetime
 
 # ---------- 双地点 ----------
 LOCATIONS = [
@@ -584,10 +584,11 @@ def check_nmc_alerts(s, persist=None):
             title = a.get("title","")
             matched = next((loc["name"] for loc in LOCATIONS if any(k in title for k in loc["kw"])), None)
             if not matched: continue
-            color = next((c for c in ("红","橙","黄","蓝") if c+"色" in title), "蓝")
-            wtype = next((kw for kw in ("雷电","大雾","暴雨","寒潮","大风","高温","台风","暴雪",
-                          "霜冻","道路结冰","沙尘暴","雷雨大风","强对流","冰雹","干旱","霾","海上大风")
-                          if kw in title), "天气")
+            # 标题格式固定为「XX气象台发布YY蓝色预警信号」，种类直接从标题提，
+            # 不再维护关键词白名单（新种类如“道路冰雪”不用再手动加）。
+            m = re.search(r"(?:发布|解除)(.+?)(红|橙|黄|蓝)色预警", title)
+            wtype = m.group(1) if m else "天气"
+            color = m.group(2) if m else "蓝"
             key = f"{matched}|{wtype}|{color}"
             station = title.split("发布")[0]
             current.setdefault(key, {"stations":[], "time":a.get("issuetime","")})["stations"].append(station)
