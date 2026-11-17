@@ -179,7 +179,7 @@ TITLE_MAX, SUBTITLE_MAX, BODY_LINE_MAX, BODY_MAX = 18, 20, 30, 120
 ICON_BASE = "https://raw.githubusercontent.com/qq2641205717-tech/bark-alert/main/icons"
 ICONS = {
     "temp_up": "temp_up.png", "temp_down": "temp_down.png",
-    "rain_start": "rain_start.png", "rain_stop": "rain_stop.png",
+    "rain_start": "rain_start.png", "rain_stop": "rain_stop_v2.png",
     "rain_heavy": "rain_heavy.png", "snow": "snow.png",
     "sunny": "sunny.png", "air_bad": "air_bad.png",
     "morning": "morning.png", "evening": "evening.png",
@@ -308,8 +308,8 @@ def _deg(x):
         return "未取到"
 
 def _sub(loc, time_str):
-    """副标题统一格式: '地点 MM-DD HH:MM', 如 '通化 11-10 09:00'."""
-    return f"{loc} {fmt_time(time_str)}"
+    """副标题统一格式: 只写时间 'MM-DD HH:MM', 不重复地点 (地点已在标题里)."""
+    return fmt_time(time_str)
 
 def _aqi_advice(tag):
     if tag == "fresh":
@@ -320,7 +320,7 @@ def _aqi_advice(tag):
 
 def eq_short(nearest_name, time_str, dist, depth, intensity, source):
     """地震三段式文案 (副标题 + 正文 2 行, 不含地点全称):
-    subtitle '地点 MM-DD HH:MM' / L1 '距最近点: …; 深度: …; 烈度: …'
+    subtitle 'MM-DD HH:MM' / L1 '距最近点: …; 深度: …; 烈度: …'
     / L2 '来源: …'。距另一地点距离为次要字段, 已删掉, 不编数。"""
     depth_txt = _km(depth)
     intensity_txt = str(intensity).strip() if str(intensity).strip() not in ("", "?") else "未取到"
@@ -486,7 +486,7 @@ def check_weather(s, persist=None):
             elif new_st == 0 and old_st == 1 and (now_ts - st.get("last_rain_change",0)) >= cooldown:
                 bark(fmt_title(name, f"{pt or '降雨'}趋停"), _sub(name, now_txt),
                     f"未来3小时降水{nxt}%",
-                        "降水渐止, 可择机出行",
+                        "可择机出行",
                             icon="rain_stop", level="timeSensitive", group="wx")
                 st["last_rain_state"] = 0; st["last_rain_change"] = now_ts
             # 雨越下越大: 降水概率比上次涨>=30且已在下雨
