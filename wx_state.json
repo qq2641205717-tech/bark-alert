@@ -58,9 +58,9 @@
     }
   },
   "last_evening": "2026-11-17",
-  "last_morning": "2026-11-17",
+  "last_morning": "2026-11-18",
   "heartbeat": {
-    "last_ok": "2026-11-17T23:00:01Z",
+    "last_ok": "2026-11-17T23:03:26Z",
     "mode": "weather"
   }
 }
