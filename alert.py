@@ -547,7 +547,7 @@ def morning_forecast():
                 _aqi_txt = f"AQI {_aqi}, PM2.5 {_pm25}"
             except Exception:
                 _aqi_txt = "未取到"
-            bark(fmt_title(name, "今日天气"), f"{name} {fmt_bj_now().strftime('%m-%d')}",
+            bark(fmt_title(name, "今日天气"), f"{fmt_bj_now_str()}发布",
                 f"{wmo(today_code)}, 最高{_deg(tmax)}, 最低{_deg(tmin)}",
                     f"降水{pmax}%, {_aqi_txt}",
                         icon="sunny" if today_code in (0, 1) else "morning", level="timeSensitive", group="wx")
@@ -577,7 +577,7 @@ def evening_forecast():
                 _aqi_txt = f"AQI {_aqi}, PM2.5 {_pm25}"
             except Exception:
                 _aqi_txt = "未取到"
-            bark(fmt_title(name, "今夜到明早"), f"{name} {fmt_bj_now().strftime('%m-%d')}",
+            bark(fmt_title(name, "今夜到明早"), f"{fmt_bj_now_str()}发布",
                 f"夜间{wmo(night_code)}, 最低{night_low:.0f}°",
                     f"明早{wmo(morn_code)}{morn_temp:.0f}°, 降水{max_rain}%",
                         icon="evening", level="timeSensitive", group="wx")
