@@ -31,28 +31,28 @@
   },
   "wx": {
     "通化": {
-      "last_temp": 3.5,
-      "last_rain_prob": 11,
+      "last_temp": 3.2,
+      "last_rain_prob": 4,
       "last_aqi": 72,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1794892510.5790887,
-      "last_nxt": 11
+      "last_nxt": 4
     },
     "梧州": {
       "last_temp": 28.0,
-      "last_rain_prob": 55,
+      "last_rain_prob": 64,
       "last_aqi": 75,
       "last_wx_code": 0,
       "last_rain_state": 1,
       "last_rain_change": 1794817023.3826659,
-      "last_nxt": 55
+      "last_nxt": 64
     }
   },
   "last_evening": "2026-11-16",
   "last_morning": "2026-11-17",
   "heartbeat": {
-    "last_ok": "2026-11-17T07:15:06Z",
+    "last_ok": "2026-11-17T07:15:45Z",
     "mode": "weather"
   }
 }
