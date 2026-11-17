@@ -660,14 +660,21 @@ def _fetch_alarm_blocks(url):
     return blocks
 
 def _alarm_guide(url):
-    """详情页防御指南首条, 供通知正文最后一行用。拉不到或解析失败返回 None。
+    """详情页防御指南里挑一条对个人有用的, 供通知正文最后一行用。
+    官方指南第一条常是「政府及相关部门按照职责做好X工作」, 对个人没用, 跳过,
+    取第一条个人行动建议; 挑不到或拉不到返回 None (调用方用 NMC_ADVICE 兜底)。
     同一次运行内按 URL 缓存, 省级匹配和正文提取共用一次请求。"""
     blocks = _fetch_alarm_blocks(url)
     if len(blocks) > 1:
         g = re.sub(r"^.*?防御指南[：:]\s*", "", blocks[1])
-        g = re.sub(r"^\s*\d+[.、]\s*", "", g)
-        guide = g.split("；")[0].split(";")[0].strip()
-        return guide or None
+        items = [re.sub(r"^\s*\d+[.、]\s*", "", it).strip(" 。")
+                 for it in re.split(r"[；;]", g)]
+        for it in items:
+            if not it:
+                continue
+            if re.match(r"^(政府|相关部门|有关部门)", it):
+                continue
+            return it
     return None
 
 # 预警种类 -> 简明影响 (正文第 3 行, 官方正文太长截断后常把关键句切掉, 改用一句能看完的)
