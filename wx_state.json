@@ -30,12 +30,12 @@
     },
     "梧州|雷电|黄": {
       "issuetime": "2026/11/17 16:02",
-      "last_push": 1794903367.066634
+      "last_push": 1794914176.731287
     }
   },
   "wx": {
     "通化": {
-      "last_temp": -2.4,
+      "last_temp": -2.5,
       "last_rain_prob": 0,
       "last_aqi": 77,
       "last_wx_code": 0,
@@ -56,7 +56,7 @@
   "last_evening": "2026-11-17",
   "last_morning": "2026-11-17",
   "heartbeat": {
-    "last_ok": "2026-11-17T11:15:47Z",
+    "last_ok": "2026-11-17T11:16:18Z",
     "mode": "weather"
   }
 }
