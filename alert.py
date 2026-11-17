@@ -606,7 +606,8 @@ def precise_place(station):
 
 def _station_short(station):
     """站点短名, 供正文列举涉及地点用, 如 梅河口/柳河/通化县/东昌区/吉林省。
-    通化县/通化市保留后缀以区分, 其他区/县/县级市去后缀, 省去一行字数防折行。"""
+    通化县/通化市保留后缀以区分, 其他区/县/县级市去后缀, 省去一行字数防折行。
+    去后缀后只剩 1 个字时保留后缀 (如 藤县不写成 藤, 单字一行像缺字)。"""
     s = station.replace("气象台", "")
     parts = re.findall(r".+?(?:省|自治区|自治州|市|区|县)", s)
     if not parts:
@@ -615,7 +616,8 @@ def _station_short(station):
     if last in ("通化县", "通化市"):
         return last
     if last.endswith("市") or last.endswith("县"):
-        return last[:-1]
+        short = last[:-1]
+        return short if len(short) >= 2 else last
     return last
 
 def _stations_line(stations):
