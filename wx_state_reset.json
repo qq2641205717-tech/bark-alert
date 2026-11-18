@@ -1,0 +1,66 @@
+{
+  "nmc_pushed": {
+    "通化|大雾|黄": {
+      "issuetime": "2026/11/15 05:14",
+      "last_push": 1794691225.607589
+    },
+    "通化|大雾|橙": {
+      "issuetime": "2026/11/14 21:22",
+      "last_push": 1794663035.052647
+    },
+    "梧州|大雾|橙": {
+      "issuetime": "2026/11/15 03:35",
+      "last_push": 1794685826.702962
+    },
+    "梧州|大雾|黄": {
+      "issuetime": "2026/11/15 01:03",
+      "last_push": 1794676227.878086
+    },
+    "通化|天气|蓝": {
+      "issuetime": "2026/11/16 16:36",
+      "last_push": 1794818431.060352
+    },
+    "通化|道路冰雪|蓝": {
+      "issuetime": "2026/11/16 16:58",
+      "last_push": 1794883008.988443
+    },
+    "通化|霾|黄": {
+      "issuetime": "2026/11/16 17:24",
+      "last_push": 1794894157.479596
+    },
+    "梧州|雷电|黄": {
+      "issuetime": "2026/11/17 16:02",
+      "last_push": 1794914176.731287
+    },
+    "梧州|大风|蓝": {
+      "issuetime": "2026/11/17 22:13",
+      "last_push": 1794957782.071737
+    }
+  },
+  "wx": {
+    "通化": {
+      "last_temp": -4.6,
+      "last_rain_prob": 1,
+      "last_aqi": 144,
+      "last_wx_code": 0,
+      "last_rain_state": 0,
+      "last_rain_change": 1794892510.5790887,
+      "last_nxt": 1
+    },
+    "梧州": {
+      "last_temp": 19.2,
+      "last_rain_prob": 80,
+      "last_aqi": 57,
+      "last_wx_code": 0,
+      "last_rain_state": 1,
+      "last_rain_change": 1794817023.3826659,
+      "last_nxt": 80
+    }
+  },
+  "last_evening": "2026-11-17",
+  "last_morning": "2026-11-17",
+  "heartbeat": {
+    "last_ok": "2026-11-18T01:01:37Z",
+    "mode": "weather"
+  }
+}
