@@ -58,7 +58,7 @@
     "梧州": {
       "last_temp": 14.9,
       "last_rain_prob": 0,
-      "last_aqi": 40,
+      "last_aqi": 37,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1794986124.2723563,
@@ -68,7 +68,7 @@
   "last_evening": "2026-11-18",
   "last_morning": "2026-11-18",
   "heartbeat": {
-    "last_ok": "2026-11-18T15:59:12Z",
+    "last_ok": "2026-11-18T16:01:00Z",
     "mode": "weather"
   }
 }
