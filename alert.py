@@ -181,8 +181,8 @@ ICONS = {
     "temp_up": "temp_up.png", "temp_down": "temp_down.png",
     "rain_start": "rain_start.png", "rain_stop": "rain_stop_v2.png",
     "rain_heavy": "rain_heavy.png", "snow": "snow.png",
-    "sunny": "sunny.png", "air_bad": "air_bad.png",
-    "morning": "morning.png", "evening": "evening.png",
+    "sunny": "sunny_v2.png", "air_bad": "air_bad.png",
+    "morning": "morning_v2.png", "evening": "evening_v2.png",
     "earthquake": "earthquake.png", "tsunami": "tsunami.png",
     "warning": "warning.png", "system": "system.png",
     # 中央气象台预警种类图标 (2026-11-16, 每种预警一个, 180x180 PNG)
@@ -220,7 +220,7 @@ def bark(title, subtitle, l1, l2=None, l3=None, l4=None, level="timeSensitive", 
     icon 为 ICONS 里的 key (如 "temp_up"), 按提醒类型选图标, 传错 key 则不发 icon.
     正文只写有用的内容, 不写「来源: 中央气象台」这类无关紧要的凑数行."""
     if not BARK_KEY:
-        print("[WARN] BARK_KEY 未设置"); return
+        print("[WARN] BARK_KEY 未设置"); return False
     if level == "critical":
         times = 3
     else:
@@ -238,6 +238,11 @@ def bark(title, subtitle, l1, l2=None, l3=None, l4=None, level="timeSensitive", 
     if icon and icon in ICONS:
         payload["icon"] = ICON_BASE + "/" + ICONS[icon]
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    # 2026-11-18 早报漏推教训: 以前 bark() 不返回值, 调用方无从知道
+    # 推没推成; send_morning_if_due 不管成败都把 last_morning 标成已发,
+    # 导致状态文件写着已发、用户手机上却一条都没有, 且当天再也不会重试。
+    # 现在返回 True/False, 早晚报只在全部地点都推成功时才标记已发。
+    all_sent = True
     for n in range(times):
         sent = False
         for attempt in range(1, 3):
@@ -255,6 +260,8 @@ def bark(title, subtitle, l1, l2=None, l3=None, l4=None, level="timeSensitive", 
                     time.sleep(2)
         if not sent:
             print(f"[BARK FAIL] {title} ({n+1}/{times}) 2 次都未发出, 丢弃不补发")
+            all_sent = False
+    return all_sent
 
 def fmt_time(t):
     """把 '2026-11-10 02:15:00' / ISO 时间统一成 '11-10 02:15', 解析失败原样返回."""
@@ -380,19 +387,21 @@ def aqi_level(aqi):
     return "🚨", "空气严重污染", "severe"
 
 def send_morning_if_due(s, persist=None):
-    """早报: 7-10 点窗口内、今天还没发过才发, 发完立刻把标记写下来.
-    persist 是保存回调 (主入口传 save_state): 发完立刻落盘, 即使后面
-    的天气检查出异常、进程提前退出, 这条已发标记也不会丢, 下一分钟
-    不会再发一次。没有 persist 时只改内存里的 s (供离线测试用)."""
+    """早报: 7-10 点窗口内、今天还没发过才发, 推成功才把标记写下来.
+    推失败不标记, 下一分钟 (仍在窗口内) 再试 (2026-11-18 早报漏推教训:
+    以前不管成败都标记, 状态写着已发、手机上却没有, 当天再也不会补发)."""
     bj_now = fmt_bj_now()
     bj_date = bj_now.strftime("%Y-%m-%d")
     if 7 <= bj_now.hour < 10 and s.get("last_morning") != bj_date:
         print(f"[FORECAST] 发送早报 {bj_now.strftime('%H:%M')}")
-        morning_forecast()
-        s["last_morning"] = bj_date
-        if persist:
-            persist(s)
-        return True
+        if morning_forecast():
+            s["last_morning"] = bj_date
+            if persist:
+                persist(s)
+            return True
+        # 推失败不标记: 下一分钟 (仍在 7-10 点窗口内) 会再试, 不会整天漏掉
+        print("[FORECAST] 早报推送失败, 未标记已发, 下一分钟重试")
+        return False
     return False
 
 def send_evening_if_due(s, persist=None):
@@ -403,11 +412,13 @@ def send_evening_if_due(s, persist=None):
     bj_date = bj_now.strftime("%Y-%m-%d")
     if 17 <= bj_now.hour < 22 and s.get("last_evening") != bj_date:
         print(f"[FORECAST] 发送晚报 {bj_now.strftime('%H:%M')}")
-        evening_forecast()
-        s["last_evening"] = bj_date
-        if persist:
-            persist(s)
-        return True
+        if evening_forecast():
+            s["last_evening"] = bj_date
+            if persist:
+                persist(s)
+            return True
+        print("[FORECAST] 晚报推送失败, 未标记已发, 下一分钟重试")
+        return False
     return False
 
 def check_weather(s, persist=None):
@@ -426,6 +437,7 @@ def check_weather(s, persist=None):
         # AQI 先取一次, 供本轮天气文案复用 (取不到为 None, 文案里不编数);
         # 去重逻辑仍在后面的 AQI 段, 只用这里取到的值, 不重复请求
         cur_aqi, cur_pm25 = None, None
+        st = wx.setdefault(name, {"last_temp":None, "last_rain_prob":0, "last_aqi":None})
         try:
             _aq = fetch_aqi(loc)
             cur_aqi = int(_aq["current"]["us_aqi"])
@@ -438,7 +450,6 @@ def check_weather(s, persist=None):
             wind = cur.get("wind_speed_10m","?")
             apparent = cur.get("apparent_temperature", "?")
             humidity = cur.get("relative_humidity_2m", "?")
-            st = wx.setdefault(name, {"last_temp":None, "last_rain_prob":0, "last_aqi":None})
             lt = st.get("last_temp")
             now_txt = fmt_time(cur.get("time", "")) or fmt_bj_now_str()
             if lt is not None and abs(temp-lt) >= 5:
@@ -529,6 +540,10 @@ def check_weather(s, persist=None):
             print(f"[AQI {name} ERR] {e}")
 
 def morning_forecast():
+    """返回 True 当且仅当全部地点都推成功; 任一地点取数失败或 Bark
+    推送失败都返回 False, 调用方不标记已发、下一分钟重试。"""
+    ok_all = True
+    sent_any = False
     for loc in LOCATIONS:
         name = loc["name"]
         try:
@@ -547,14 +562,24 @@ def morning_forecast():
                 _aqi_txt = f"AQI {_aqi}, PM2.5 {_pm25}"
             except Exception:
                 _aqi_txt = "未取到"
-            bark(fmt_title(name, "今日天气"), f"{fmt_bj_now_str()}发布",
+            if bark(fmt_title(name, "今日天气"), f"{fmt_bj_now_str()}发布",
                 f"{wmo(today_code)}, 最高{_deg(tmax)}, 最低{_deg(tmin)}",
                     f"降水{pmax}%, {_aqi_txt}",
-                        icon="sunny" if today_code in (0, 1) else "morning", level="timeSensitive", group="wx")
+                        icon="sunny" if today_code in (0, 1) else "morning", level="timeSensitive", group="wx"):
+                sent_any = True
+            else:
+                print(f"[MORNING {name} BARK FAIL]")
+                ok_all = False
         except Exception as e:
             print(f"[MORNING {name} ERR] {e}")
+            ok_all = False
+    return ok_all and sent_any
 
 def evening_forecast():
+    """返回 True 当且仅当全部地点都推成功; 失败不标记已发、下一分钟重试
+    (同 morning_forecast, 2026-11-18 早报漏推的教训)。"""
+    ok_all = True
+    sent_any = False
     for loc in LOCATIONS:
         name = loc["name"]
         try:
@@ -577,12 +602,18 @@ def evening_forecast():
                 _aqi_txt = f"AQI {_aqi}, PM2.5 {_pm25}"
             except Exception:
                 _aqi_txt = "未取到"
-            bark(fmt_title(name, "今夜到明早"), f"{fmt_bj_now_str()}发布",
+            if bark(fmt_title(name, "今夜到明早"), f"{fmt_bj_now_str()}发布",
                 f"夜间{wmo(night_code)}, 最低{night_low:.0f}°",
                     f"明早{wmo(morn_code)}{morn_temp:.0f}°, 降水{max_rain}%",
-                        icon="evening", level="timeSensitive", group="wx")
+                        icon="evening", level="timeSensitive", group="wx"):
+                sent_any = True
+            else:
+                print(f"[EVENING {name} BARK FAIL]")
+                ok_all = False
         except Exception as e:
             print(f"[EVENING {name} ERR] {e}")
+            ok_all = False
+    return ok_all and sent_any
 
 # ---------- 中央气象台官方预警 ----------
 def precise_place(station):
