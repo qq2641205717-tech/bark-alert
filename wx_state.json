@@ -53,14 +53,14 @@
     "通化": {
       "last_temp": -8.8,
       "last_rain_prob": 0,
-      "last_aqi": 32,
+      "last_aqi": 34,
       "last_wx_code": 0,
       "last_rain_state": 0,
       "last_rain_change": 1794892510.5790887,
       "last_nxt": 0
     },
     "梧州": {
-      "last_temp": 13.0,
+      "last_temp": 13.2,
       "last_rain_prob": 78,
       "last_aqi": 69,
       "last_wx_code": 0,
@@ -72,7 +72,7 @@
   "last_evening": "2026-11-19",
   "last_morning": "2026-11-20",
   "heartbeat": {
-    "last_ok": "2026-11-20T02:59:52Z",
+    "last_ok": "2026-11-20T03:01:29Z",
     "mode": "weather"
   }
 }
