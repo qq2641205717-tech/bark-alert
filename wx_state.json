@@ -42,7 +42,7 @@
     },
     "通化|大风|蓝": {
       "issuetime": "2026/11/24 13:35",
-      "last_push": 1795553082.500832
+      "last_push": 1795563935.308783
     },
     "通化|寒潮|蓝": {
       "issuetime": "2026/11/23 16:04",
@@ -51,7 +51,7 @@
   },
   "wx": {
     "通化": {
-      "last_temp": -8.7,
+      "last_temp": -8.0,
       "last_rain_prob": 0,
       "last_aqi": 52,
       "last_wx_code": 0,
@@ -72,7 +72,7 @@
   "last_evening": "2026-11-24",
   "last_morning": "2026-11-25",
   "heartbeat": {
-    "last_ok": "2026-11-24T23:44:26Z",
+    "last_ok": "2026-11-24T23:45:38Z",
     "mode": "weather"
   }
 }
