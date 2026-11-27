@@ -21,8 +21,8 @@
       "last_push": 1794818431.060352
     },
     "通化|道路冰雪|蓝": {
-      "issuetime": "2026/11/27 16:20",
-      "last_push": 1795768548.268467
+      "issuetime": "2026/11/27 18:06",
+      "last_push": 1795774550.196799
     },
     "通化|霾|黄": {
       "issuetime": "2026/11/26 18:29",
@@ -55,7 +55,7 @@
   },
   "wx": {
     "通化": {
-      "last_temp": 2.0,
+      "last_temp": 1.5,
       "last_rain_prob": 0,
       "last_aqi": 73,
       "last_wx_code": 0,
@@ -64,7 +64,7 @@
       "last_nxt": 0
     },
     "梧州": {
-      "last_temp": 20.0,
+      "last_temp": 19.7,
       "last_rain_prob": 0,
       "last_aqi": 63,
       "last_wx_code": 0,
@@ -76,7 +76,7 @@
   "last_evening": "2026-11-27",
   "last_morning": "2026-11-27",
   "heartbeat": {
-    "last_ok": "2026-11-27T10:14:37Z",
+    "last_ok": "2026-11-27T10:15:52Z",
     "mode": "weather"
   }
 }
