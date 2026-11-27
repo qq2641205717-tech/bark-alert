@@ -55,7 +55,7 @@
   },
   "wx": {
     "通化": {
-      "last_temp": -3.9,
+      "last_temp": -4.2,
       "last_rain_prob": 0,
       "last_aqi": 59,
       "last_wx_code": 0,
@@ -76,7 +76,7 @@
   "last_evening": "2026-11-27",
   "last_morning": "2026-11-27",
   "heartbeat": {
-    "last_ok": "2026-11-27T17:29:35Z",
+    "last_ok": "2026-11-27T17:30:54Z",
     "mode": "weather"
   }
 }
