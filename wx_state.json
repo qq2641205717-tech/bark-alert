@@ -51,11 +51,15 @@
     "通化|寒潮|黄": {
       "issuetime": "2026/11/27 14:57",
       "last_push": 1795817444.502841
+    },
+    "梧州|大雾|蓝": {
+      "issuetime": "2026/11/28 05:30",
+      "last_push": 1795821515.55057
     }
   },
   "wx": {
     "通化": {
-      "last_temp": -7.1,
+      "last_temp": -7.3,
       "last_rain_prob": 0,
       "last_aqi": 58,
       "last_wx_code": 0,
@@ -76,7 +80,7 @@
   "last_evening": "2026-11-27",
   "last_morning": "2026-11-28",
   "heartbeat": {
-    "last_ok": "2026-11-27T23:17:35Z",
+    "last_ok": "2026-11-27T23:18:36Z",
     "mode": "weather"
   }
 }
